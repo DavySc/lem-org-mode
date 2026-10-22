@@ -108,6 +108,14 @@
                (lem-org-mode:org-insert-item p)
                (list (smoke-text b) (lem:line-number-at-point p))))
 
+(smoke-check "item insert with a live point and a sub-item"
+             (list (format nil "1. a~%   - [ ] sub~%2. ~%3. b~%") 3)
+             (let* ((b (smoke-buffer (format nil "1. a~%   - [ ] sub~%2. b~%")))
+                    (p (lem:copy-point (smoke-line b 1) :left-inserting)))
+               (lem-org-mode:org-insert-item p)
+               (prog1 (list (smoke-text b) (lem:line-number-at-point p))
+                 (lem:delete-point p))))
+
 (smoke-check "checkbox toggle keeps point"
              (list "- [X] a" 3)
              (let* ((b (smoke-buffer (format nil "- [ ] a~%")))

@@ -702,10 +702,12 @@ CHECKBOX is the character inside the brackets, or NIL."
     (line-start point)
     (dotimes (i (1- extent)) (line-offset point 1))
     (line-end point)
-    (insert-string point (format nil "~%~A" new))
-    (let ((line (line-number-at-point point)))
+    ;; Compute the target before inserting: whether POINT advances over inserted text depends on
+    ;; its kind (a temporary point stays behind, the current point moves on).
+    (let ((new-line (1+ (line-number-at-point point))))
+      (insert-string point (format nil "~%~A" new))
       (org-renumber-list point)
-      (move-to-line point line)
+      (move-to-line point new-line)
       (line-end point))
     point))
 
