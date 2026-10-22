@@ -139,6 +139,22 @@
                (let ((line (lem:line-string (smoke-line b 1))))
                  (subseq line (- (length line) 6)))))
 
+(smoke-check "clock in, out, cancel"
+             (list (format nil "* a~%:LOGBOOK:~%CLOCK: [2026-10-22 Thu 10:00]~%:END:~%")
+                   90
+                   "CLOCK: [2026-10-22 Thu 10:00]--[2026-10-22 Thu 11:30] =>  1:30"
+                   (format nil "* a~%body"))
+             (let ((b (smoke-buffer (format nil "* a~%"))) (out '()))
+               (lem-org-mode:org-clock-in (smoke-line b 1) '(2026 10 22 10 0))
+               (push (smoke-text b) out)
+               (push (lem-org-mode:org-clock-out (smoke-line b 1) '(2026 10 22 11 30)) out)
+               (push (lem:line-string (smoke-line b 3)) out)
+               (let ((c (smoke-buffer (format nil "* a~%body"))))
+                 (lem-org-mode:org-clock-in (smoke-line c 1) '(2026 10 22 10 0))
+                 (lem-org-mode:org-clock-cancel (smoke-line c 1))
+                 (push (smoke-text c) out))
+               (nreverse out)))
+
 (smoke-check "src block bounds"
              (list 1 3)
              (let ((b (smoke-buffer (format nil "#+begin_src sql~%select 1;~%#+end_src~%"))))
@@ -203,5 +219,26 @@
                      (lem-org-mode::babel-tangle-plan
                       (lem-org-mode::babel-scan (list "#+begin_src python :tangle yes" "print(1)" "#+end_src") '("TODO" "DONE"))
                       "notes" "notes.org")))
+(smoke-check "sqlcmd arguments"
+             (list t t t t)
+             (let ((argv (lem-org-mode::sql-command :sqlcmd '(("host" . "srv") ("port" . "1433")
+                                                               ("trust-cert" . "yes") ("timeout" . "7")))))
+               (list (and (member "-b" argv :test #'string=) t)
+                     (equal (subseq (member "-l" argv :test #'string=) 0 2) '("-l" "7"))
+                     (and (member "-C" argv :test #'string=) t)
+                     (and (member "srv,1433" argv :test #'string=) t))))
+
+;; Live SQL Server checks run only when LEM_ORG_SMOKE_MSSQL names a host (Windows authentication).
+(let ((host (uiop:getenv "LEM_ORG_SMOKE_MSSQL")))
+  (if (and host (plusp (length host)))
+      (let ((args (list (cons "host" host) (cons "trust-cert" "yes"))))
+        (smoke-check "mssql rows"
+                     '(("one" "two") ("1" "x"))
+                     (lem-org-mode::run-sql :sqlcmd args "select 1 as one, 'x' as two;"))
+        (smoke-check "mssql error is an editor-error"
+                     t
+                     (handler-case (progn (lem-org-mode::run-sql :sqlcmd args "select * from nope_nope;") nil)
+                       (lem:editor-error () t))))
+      (smoke-say "SKIP mssql checks (set LEM_ORG_SMOKE_MSSQL to a host)")))
 
 (smoke-say "DONE")

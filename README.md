@@ -27,6 +27,11 @@ A small Org mode for the [Lem](https://github.com/lem-project/lem) editor. Work 
 | `C-c a a` / `t` / `m` | `org-agenda-week` / `-todo-list` / `-tags` | week agenda / global TODO list / entries with a tag (see Agenda) |
 | `C-c C-e h` / `m` | `org-export-html` / `org-export-markdown` | export the buffer to `.html` / `.md` next to the file |
 | `C-c C-v t` | `org-babel-tangle` | write blocks with `:tangle` to files |
+| `C-c C-x C-i` | `org-clock-in-command` | start a clock on the entry: adds `CLOCK: [date time]` to its `:LOGBOOK:` drawer; stops a clock running elsewhere |
+| `C-c C-x C-o` | `org-clock-out-command` | stop the running clock, write `--[end] =>  1:30` and show the duration |
+| `C-c C-x C-q` | `org-clock-cancel-command` | drop the running clock without recording it |
+
+Marking an entry DONE with `C-c C-t` also stops its running clock.
 
 Numeric table columns are right-aligned. Customise the TODO keywords with `lem-org-mode:*org-todo-keywords*` (default `("TODO" "DONE")`).
 
@@ -121,7 +126,7 @@ Results are a table with a rule under the header row. Engines:
 | `:engine` | Runs | Header arguments |
 |---|---|---|
 | `postgres` (default, `*org-sql-default-engine*`) | `psql --csv` | `:db :host :port :user`; password via `~/.pgpass` or `PGPASSWORD` |
-| `mssql` | `sqlcmd` | `:db :host :port`, `:user` and `:password`, or Windows authentication (`-E`) when no user |
+| `mssql` | `sqlcmd` | `:db :host :port`, `:user` and `:password`, or Windows authentication (`-E`) when no user. `:trust-cert yes` passes `-C` for servers with a self-signed certificate. `:timeout <seconds>` bounds login and query (default `*org-sql-timeout*`, 60); it is not a hard cap on an unreachable host, and Lem waits while `sqlcmd` runs |
 | `db2i` | `isql` (unixODBC) | `:db` is the ODBC data source name, optional `:user :password` |
 
 The client must be on `PATH`. Do not commit passwords in header arguments.
