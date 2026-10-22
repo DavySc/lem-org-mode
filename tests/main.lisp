@@ -7,7 +7,7 @@
     (insert-string (buffer-point buffer) text)
     buffer))
 
-(defun buffer-text (buffer)
+(defun text-of (buffer)
   (points-to-string (buffer-start-point buffer) (buffer-end-point buffer)))
 
 (defun line-point (buffer line)
@@ -38,29 +38,29 @@
 (deftest test-cycle-todo
   (let ((buffer (make-org-buffer (format nil "** write tests~%"))))
     (org-cycle-todo (line-point buffer 1))
-    (ok (string= (format nil "** TODO write tests~%") (buffer-text buffer)))
+    (ok (string= (format nil "** TODO write tests~%") (text-of buffer)))
     (org-cycle-todo (line-point buffer 1))
-    (ok (string= (format nil "** DONE write tests~%") (buffer-text buffer)))
+    (ok (string= (format nil "** DONE write tests~%") (text-of buffer)))
     (org-cycle-todo (line-point buffer 1))
-    (ok (string= (format nil "** write tests~%") (buffer-text buffer)))))
+    (ok (string= (format nil "** write tests~%") (text-of buffer)))))
 
 (deftest test-shift-subtree
   (let ((buffer (make-org-buffer (format nil "* A~%** A1~%* B~%"))))
     (org-shift-subtree (line-point buffer 1) 1)
-    (ok (string= (format nil "** A~%*** A1~%* B~%") (buffer-text buffer)))
+    (ok (string= (format nil "** A~%*** A1~%* B~%") (text-of buffer)))
     (org-shift-subtree (line-point buffer 1) -1)
-    (ok (string= (format nil "* A~%** A1~%* B~%") (buffer-text buffer)))
+    (ok (string= (format nil "* A~%** A1~%* B~%") (text-of buffer)))
     (ok (signals (org-shift-subtree (line-point buffer 1) -1) 'editor-error))))
 
 (deftest test-move-subtree
   (let ((buffer (make-org-buffer (format nil "* A~%a~%* B~%b"))))
     (let ((point (line-point buffer 1)))
       (org-move-subtree point :down)
-      (ok (string= (format nil "* B~%b~%* A~%a") (buffer-text buffer)))
+      (ok (string= (format nil "* B~%b~%* A~%a") (text-of buffer)))
       (ok (= 3 (line-number-at-point point))))
     (let ((point (line-point buffer 3)))
       (org-move-subtree point :up)
-      (ok (string= (format nil "* A~%a~%* B~%b") (buffer-text buffer)))
+      (ok (string= (format nil "* A~%a~%* B~%b") (text-of buffer)))
       (ok (= 1 (line-number-at-point point))))
     (ok (signals (org-move-subtree (line-point buffer 3) :down) 'editor-error))))
 
@@ -75,15 +75,15 @@
   (let ((buffer (make-org-buffer (format nil "|a|bb~%|ccc|d|~%"))))
     (let ((point (line-point buffer 1)))
       (org-table-edit point :align)
-      (ok (string= (format nil "| a   | bb |~%| ccc | d  |~%") (buffer-text buffer)))
+      (ok (string= (format nil "| a   | bb |~%| ccc | d  |~%") (text-of buffer)))
       (setf (point-charpos point) 2)
       (org-table-edit point :next-cell)
       (ok (= 1 (line-number-at-point point)))
       (ok (= 8 (point-charpos point)))
       (org-table-edit point :insert-column)
-      (ok (string= (format nil "| a   |   | bb |~%| ccc |   | d  |~%") (buffer-text buffer)))
+      (ok (string= (format nil "| a   |   | bb |~%| ccc |   | d  |~%") (text-of buffer)))
       (org-table-edit point :move-row-down)
-      (ok (string= (format nil "| ccc |   | d  |~%| a   |   | bb |~%") (buffer-text buffer)))
+      (ok (string= (format nil "| ccc |   | d  |~%| a   |   | bb |~%") (text-of buffer)))
       (ok (= 2 (line-number-at-point point))))
     (ok (signals (org-table-edit (line-point buffer 1) :previous-cell) 'editor-error))))
 
@@ -91,7 +91,7 @@
   (let ((buffer (make-org-buffer (format nil "1. a~%   - [ ] sub~%2. b~%"))))
     (let ((point (line-point buffer 1)))
       (org-insert-item point)
-      (ok (string= (format nil "1. a~%   - [ ] sub~%2. ~%3. b~%") (buffer-text buffer)))
+      (ok (string= (format nil "1. a~%   - [ ] sub~%2. ~%3. b~%") (text-of buffer)))
       (ok (= 3 (line-number-at-point point))))
     (let ((point (line-point buffer 2)))
       (setf (point-charpos point) 5)
@@ -133,3 +133,15 @@
     (org-clock-cancel (line-point buffer 1))
     (ok (null (org-clock-running (buffer-point buffer))))
     (ok (signals (org-clock-out (line-point buffer 1) '(2026 10 22 13 0)) 'editor-error))))
+
+(deftest test-export
+  (let ((html (lem-org-mode::export-html (list "* Head" "text") '("TODO" "DONE")))
+        (md (lem-org-mode::export-markdown (list "* Head" "text") '("TODO" "DONE"))))
+    (ok (search "<h2>Head</h2>" html))
+    (ok (string= (format nil "# Head~%~%text~%") md))))
+
+(deftest test-agenda-parse
+  (let ((entries (lem-org-mode::agenda-parse (list "* TODO a" "SCHEDULED: <2026-10-22 Thu>" "* DONE b")
+                                             '("TODO" "DONE") "x.org")))
+    (ok (equal '("a" "b") (mapcar (lambda (e) (getf e :title)) entries)))
+    (ok (getf (second entries) :done))))
