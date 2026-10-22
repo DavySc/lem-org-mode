@@ -63,3 +63,58 @@
       (ok (string= (format nil "* A~%a~%* B~%b") (buffer-text buffer)))
       (ok (= 1 (line-number-at-point point))))
     (ok (signals (org-move-subtree (line-point buffer 3) :down) 'editor-error))))
+
+(deftest test-table-format
+  (ok (equal (org-table-format-rows (list '("Name" "Qty") :rule '("apple" "3") '("kiwi" "12.5")))
+             (list "| Name  |  Qty |"
+                   "|-------+------|"
+                   "| apple |    3 |"
+                   "| kiwi  | 12.5 |"))))
+
+(deftest test-table-edit
+  (let ((buffer (make-org-buffer (format nil "|a|bb~%|ccc|d|~%"))))
+    (let ((point (line-point buffer 1)))
+      (org-table-edit point :align)
+      (ok (string= (format nil "| a   | bb |~%| ccc | d  |~%") (buffer-text buffer)))
+      (setf (point-charpos point) 2)
+      (org-table-edit point :next-cell)
+      (ok (= 1 (line-number-at-point point)))
+      (ok (= 8 (point-charpos point)))
+      (org-table-edit point :insert-column)
+      (ok (string= (format nil "| a   |   | bb |~%| ccc |   | d  |~%") (buffer-text buffer)))
+      (org-table-edit point :move-row-down)
+      (ok (string= (format nil "| ccc |   | d  |~%| a   |   | bb |~%") (buffer-text buffer)))
+      (ok (= 2 (line-number-at-point point))))
+    (ok (signals (org-table-edit (line-point buffer 1) :previous-cell) 'editor-error))))
+
+(deftest test-list-items
+  (let ((buffer (make-org-buffer (format nil "1. a~%   - [ ] sub~%2. b~%"))))
+    (let ((point (line-point buffer 1)))
+      (org-insert-item point)
+      (ok (string= (format nil "1. a~%   - [ ] sub~%2. ~%3. b~%") (buffer-text buffer)))
+      (ok (= 3 (line-number-at-point point))))
+    (let ((point (line-point buffer 2)))
+      (setf (point-charpos point) 5)
+      (org-toggle-checkbox point)
+      (ok (string= "   - [X] sub" (line-string point)))
+      (ok (= 5 (point-charpos point))))
+    (ok (signals (org-toggle-checkbox (line-point buffer 1)) 'editor-error)
+        "toggling needs an item")))
+
+(deftest test-heading-attributes
+  (let ((buffer (make-org-buffer (format nil "* TODO write~%body~%* next~%"))))
+    (org-cycle-priority (line-point buffer 2) 1)
+    (ok (string= "* TODO [#C] write" (line-string (line-point buffer 1))))
+    (org-set-tags (line-point buffer 1) '("work"))
+    (ok (string= ":work:" (subseq (line-string (line-point buffer 1)) (- 77 6))))
+    (org-set-planning (line-point buffer 1) "SCHEDULED" "<2026-10-22 Thu>")
+    (ok (string= "SCHEDULED: <2026-10-22 Thu>" (line-string (line-point buffer 2))))
+    (org-set-property (line-point buffer 1) "ID" "7")
+    (ok (equal (list ":PROPERTIES:" ":ID: 7" ":END:" "body")
+               (loop :for n :from 3 :to 6 :collect (line-string (line-point buffer n)))))
+    (ok (string= "* next" (line-string (line-point buffer 7))))))
+
+(deftest test-babel-results
+  (let ((buffer (make-org-buffer (format nil "#+begin_src sql :engine postgres~%select 1;~%#+end_src~%"))))
+    (ok (src-block-bounds (line-point buffer 2)))
+    (ok (null (src-block-bounds (buffer-end-point buffer))) "no block after the end")))

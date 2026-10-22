@@ -30,8 +30,13 @@ Follow Lem's own style (see Lem's `contract.yml`): `defpackage` first and named 
 
 ## Roadmap
 
-1. Tables: align on Tab, cell navigation, row and column commands.
-2. Plain lists and checkboxes: `M-Return` on an item, `C-c C-c` toggle, renumbering.
-3. Tags and properties.
-4. Babel: run `#+begin_src sql` blocks via `psql`, `sqlcmd` and a Db2 for i route, results into the buffer.
-5. Skip `*` lines inside src blocks when finding headings.
+Done, but never run in a real Lem (run the smoke test first): tables, plain lists and checkboxes, priorities, tags, properties, SCHEDULED/DEADLINE/CLOSED, SQL Babel.
+
+Next:
+
+1. Statistics cookies `[1/3]` and `[50%]` on headings and items.
+2. Agenda: list TODO / scheduled / deadline entries of the buffer, then of a directory of files.
+3. Export (HTML, Markdown).
+4. Skip `*` lines inside src blocks when finding headings.
+
+Pure functions live between `;;; BEGIN pure …` and `;;; END pure …` markers. They use only CL (plus `editor-error`), so they can be tested in plain SBCL by extracting those regions and stubbing `editor-error`.

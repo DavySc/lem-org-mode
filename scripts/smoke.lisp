@@ -83,4 +83,58 @@
                (push (smoke-text b) out)
                (nreverse out)))
 
+(smoke-check "table align"
+             (format nil "| a   | bb |~%| ccc | d  |~%")
+             (let ((b (smoke-buffer (format nil "|a|bb~%|ccc|d|~%"))))
+               (lem-org-mode:org-table-edit (smoke-line b 1) :align)
+               (smoke-text b)))
+
+(smoke-check "table next cell and move row"
+             (list 1 8 (format nil "| ccc |   | d  |~%| a   |   | bb |~%") 2)
+             (let* ((b (smoke-buffer (format nil "|a|bb~%|ccc|d|~%")))
+                    (p (smoke-line b 1)))
+               (lem-org-mode:org-table-edit p :align)
+               (setf (lem:point-charpos p) 2)
+               (lem-org-mode:org-table-edit p :next-cell)
+               (let ((line (lem:line-number-at-point p)) (col (lem:point-charpos p)))
+                 (lem-org-mode:org-table-edit p :insert-column)
+                 (lem-org-mode:org-table-edit p :move-row-down)
+                 (list line col (smoke-text b) (lem:line-number-at-point p)))))
+
+(smoke-check "list item insert and renumber"
+             (list (format nil "1. a~%2. ~%3. b~%") 2)
+             (let* ((b (smoke-buffer (format nil "1. a~%2. b~%")))
+                    (p (smoke-line b 1)))
+               (lem-org-mode:org-insert-item p)
+               (list (smoke-text b) (lem:line-number-at-point p))))
+
+(smoke-check "checkbox toggle keeps point"
+             (list "- [X] a" 3)
+             (let* ((b (smoke-buffer (format nil "- [ ] a~%")))
+                    (p (smoke-line b 1)))
+               (setf (lem:point-charpos p) 3)
+               (lem-org-mode:org-toggle-checkbox p)
+               (list (lem:line-string p) (lem:point-charpos p))))
+
+(smoke-check "priority, planning, property"
+             (list "* TODO [#C] x" "SCHEDULED: <2026-10-22 Thu>" ":PROPERTIES:" ":ID: 7")
+             (let ((b (smoke-buffer (format nil "* TODO x~%body~%"))))
+               (lem-org-mode:org-cycle-priority (smoke-line b 1) 1)
+               (lem-org-mode:org-set-planning (smoke-line b 1) "SCHEDULED" "<2026-10-22 Thu>")
+               (lem-org-mode:org-set-property (smoke-line b 1) "ID" "7")
+               (loop :for n :from 1 :to 4 :collect (lem:line-string (smoke-line b n)))))
+
+(smoke-check "tags"
+             ":work:"
+             (let ((b (smoke-buffer (format nil "* x~%"))))
+               (lem-org-mode:org-set-tags (smoke-line b 1) '("work"))
+               (let ((line (lem:line-string (smoke-line b 1))))
+                 (subseq line (- (length line) 6)))))
+
+(smoke-check "src block bounds"
+             (list 1 3)
+             (let ((b (smoke-buffer (format nil "#+begin_src sql~%select 1;~%#+end_src~%"))))
+               (multiple-value-bind (begin end) (lem-org-mode:src-block-bounds (smoke-line b 2))
+                 (list (lem:line-number-at-point begin) (lem:line-number-at-point end)))))
+
 (smoke-say "DONE")
