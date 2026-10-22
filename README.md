@@ -38,7 +38,7 @@ It reads the current buffer. To read several files set, in `init.lisp`, `(setf l
 
 ### Export
 
-`C-c C-e h` writes `file.html` and `C-c C-e m` writes `file.md` next to the buffer's file (or opens a buffer when it has none). Supported: `#+TITLE:` / `#+AUTHOR:`, headings with TODO, priority and tags, planning lines, paragraphs, nested and numbered lists with checkboxes, tables (a rule after the first rows makes them the header), `src` / `example` / `quote` / `center` / `verse` blocks, `: ` example lines, `#+begin_export html|md` passthrough, links, `*bold* /italic/ _underline_ =code= ~code~ +strike+`. `:PROPERTIES:` drawers and `#+begin_comment` / `# ` comments are dropped. `:exports code` (default), `results`, `both` or `none`... `none` is treated like `results` without results, so the block disappears. No footnotes, LaTeX or images.
+`C-c C-e h` writes `file.html` and `C-c C-e m` writes `file.md` next to the buffer's file (or opens a buffer when it has none). Supported: `#+TITLE:` / `#+AUTHOR:`, headings with TODO, priority and tags, planning lines, paragraphs, nested and numbered lists with checkboxes, tables (a rule after the first rows makes them the header), `src` / `example` / `quote` / `center` / `verse` blocks, `: ` example lines, `#+begin_export html|md` passthrough, links, `*bold* /italic/ _underline_ =code= ~code~ +strike+`. `:PROPERTIES:` drawers and `#+begin_comment` / `# ` comments are dropped. `:exports code` (default) shows the block, `results` its result, `both` both, `none` neither. No footnotes, LaTeX or images.
 
 ### Source blocks (Babel)
 
