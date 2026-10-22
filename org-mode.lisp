@@ -11,7 +11,15 @@
            :org-shift-subtree
            :org-move-subtree
            :org-table-format-rows
-           :org-table-edit))
+           :org-table-edit
+           :org-insert-item
+           :org-toggle-checkbox
+           :org-cycle-priority
+           :org-set-tags
+           :org-set-planning
+           :org-set-property
+           :org-babel-execute
+           :src-block-bounds))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
@@ -93,7 +101,13 @@
 (define-key *org-mode-keymap* "M-Shift-Down" 'org-table-insert-row)
 (define-key *org-mode-keymap* "C-c C-c" 'org-ctrl-c-ctrl-c)
 (define-key *org-mode-keymap* "C-c -" 'org-table-insert-hline)
-(define-key *org-mode-keymap* "M-Return" 'org-insert-heading)
+(define-key *org-mode-keymap* "M-Return" 'org-meta-return)
+(define-key *org-mode-keymap* "Shift-Up" 'org-priority-up)
+(define-key *org-mode-keymap* "Shift-Down" 'org-priority-down)
+(define-key *org-mode-keymap* "C-c C-s" 'org-schedule)
+(define-key *org-mode-keymap* "C-c C-d" 'org-deadline)
+(define-key *org-mode-keymap* "C-c C-q" 'org-set-tags-command)
+(define-key *org-mode-keymap* "C-c C-x p" 'org-set-property-command)
 
 (defun org-heading-level (point)
   "Return the number of stars if POINT's line is an Org heading, otherwise NIL."
@@ -167,7 +181,8 @@ END is the start of the next heading of the same or a higher level, or the end o
 
 (define-command org-todo () ()
   "Cycle the todo keyword of the current heading."
-  (org-cycle-todo (current-point)))
+  (org-cycle-todo (current-point))
+  (org-todo-update-closed (current-point)))
 
 (defun subtree-headings (start end)
   "Return (line-offset . level) for every heading line in [START, END), offsets counted from START."
@@ -419,12 +434,6 @@ Return (values new-rows new-row new-column)."
   "Insert a horizontal line below the current row."
   (org-table-edit (current-point) :insert-hline))
 
-(define-command org-ctrl-c-ctrl-c () ()
-  "Do the context-appropriate action: realign the table at point."
-  (if (org-table-at-point-p (current-point))
-      (org-table-edit (current-point) :align)
-      (editor-error "Nothing to do here")))
-
 (defmacro define-meta-command (name table-operation heading-form doc)
   `(define-command ,name () ()
      ,doc
@@ -515,7 +524,7 @@ Return (values new-rows new-row new-column)."
       (unless (line-offset p -1)
         (return nil)))))
 
-(define-command org-insert-heading () ()
+(defun org-insert-heading-command ()
   "Insert a heading after the current subtree, at the same level."
   (let ((heading (enclosing-heading (current-point)))
         (point (current-point)))
@@ -527,5 +536,670 @@ Return (values new-rows new-row new-column)."
             (insert-character point #\newline))
           (insert-string point (format nil "~A ~%" stars))
           (character-offset point -1)))))
+
+(define-command org-insert-heading () ()
+  "Insert a heading after the current subtree, at the same level."
+  (org-insert-heading-command))
+
+(define-command org-meta-return () ()
+  "On a list item insert an item after it, otherwise insert a heading after the current subtree."
+  (if (org-item-at-point-p (current-point))
+      (org-insert-item (current-point))
+      (org-insert-heading-command)))
+
+;;; Plain lists and checkboxes
+;;;
+;;; An item is a line that starts with optional blanks and a bullet (-, +, a * that is indented,
+;;; or a number followed by . or )), then a space and an optional [ ], [X] or [-] checkbox.
+
+;;; BEGIN pure list code
+
+(defun list-item-parse (line)
+  "Return (values indent bullet checkbox content-start) when LINE is a list item, otherwise NIL.
+CHECKBOX is the character inside the brackets, or NIL."
+  (let* ((indent (or (position #\space line :test-not #'char=) (length line)))
+         (end (length line))
+         (bullet-end
+           (cond ((>= indent end) nil)
+                 ((or (find (char line indent) "-+")
+                      (and (char= (char line indent) #\*) (plusp indent)))
+                  (1+ indent))
+                 ((digit-char-p (char line indent))
+                  (let ((digits (position-if-not #'digit-char-p line :start indent)))
+                    (and digits (find (char line digits) ".)") (1+ digits)))))))
+    (when (and bullet-end (< bullet-end end) (char= (char line bullet-end) #\space))
+      (let* ((text (position #\space line :start bullet-end :test-not #'char=))
+             (checkbox (and text
+                            (<= (+ text 3) end)
+                            (char= (char line text) #\[)
+                            (find (char line (+ text 1)) " X-")
+                            (char= (char line (+ text 2)) #\])
+                            (or (= (+ text 3) end) (char= (char line (+ text 3)) #\space))
+                            (char line (+ text 1)))))
+        (values indent
+                (subseq line indent bullet-end)
+                checkbox
+                (cond (checkbox (min end (+ text 4)))
+                      (text text)
+                      (t end)))))))
+
+(defun list-toggle-checkbox (line)
+  "Toggle the checkbox of the item LINE: add an empty one, check [ ] and [-], clear [X]. NIL when not an item."
+  (multiple-value-bind (indent bullet checkbox content) (list-item-parse line)
+    (when indent
+      (let ((head (+ indent (length bullet))))
+        (cond ((null checkbox)
+               (concatenate 'string (subseq line 0 head) " [ ] " (subseq line content)))
+              (t
+               (concatenate 'string (subseq line 0 (position #\[ line :start head))
+                            (if (char= checkbox #\X) "[ ]" "[X]")
+                            (subseq line (+ 3 (position #\[ line :start head))))))))))
+
+(defun list-next-bullet (bullet)
+  "The bullet that follows BULLET: a number is incremented, anything else is kept."
+  (if (digit-char-p (char bullet 0))
+      (format nil "~D~A" (1+ (parse-integer bullet :junk-allowed t)) (char bullet (1- (length bullet))))
+      bullet))
+
+(defun list-new-item (line)
+  "Return the text of an empty item that follows the item LINE, with the same indentation."
+  (multiple-value-bind (indent bullet checkbox) (list-item-parse line)
+    (format nil "~A~A ~A" (make-string indent :initial-element #\space) (list-next-bullet bullet)
+            (if checkbox "[ ] " ""))))
+
+(defun list-item-extent (lines)
+  "LINES starts with an item. Return how many lines belong to it: the item, its continuations and sub-items."
+  (let ((indent (list-item-parse (first lines))))
+    (1+ (or (position-if (lambda (line)
+                           (or (string= (string-trim " " line) "")
+                               (<= (or (position #\space line :test-not #'char=) 0) indent)))
+                         (rest lines))
+            (length (rest lines))))))
+
+(defun list-renumber (lines)
+  "Renumber the ordered items in LINES, a contiguous block of list lines, level by level."
+  (let ((counters '()))
+    (mapcar (lambda (line)
+              (multiple-value-bind (indent bullet checkbox content) (list-item-parse line)
+                (declare (ignore checkbox content))
+                (cond ((null indent) line)
+                      (t
+                       (setf counters (remove-if (lambda (entry) (> (car entry) indent)) counters))
+                       (if (digit-char-p (char bullet 0))
+                           (let ((entry (or (assoc indent counters)
+                                            (car (push (cons indent 0) counters)))))
+                             (incf (cdr entry))
+                             (format nil "~A~D~A~A" (subseq line 0 indent) (cdr entry)
+                                     (char bullet (1- (length bullet)))
+                                     (subseq line (+ indent (length bullet)))))
+                           (progn (setf counters (remove indent counters :key #'car))
+                                  line))))))
+            lines)))
+
+;;; END pure list code
+
+(defun item-block-start (point)
+  "Return a point at the first line of the run of list lines that contains POINT."
+  (let ((p (copy-point point :temporary)))
+    (line-start p)
+    (loop :for q := (copy-point p :temporary)
+          :while (and (line-offset q -1) (list-line-p (line-string q)))
+          :do (move-point p q))
+    p))
+
+(defun list-line-p (string)
+  (and (plusp (length (string-trim " " string)))
+       (not (org-heading-string-p string))
+       (or (list-item-parse string)
+           (char= (char string 0) #\space))))
+
+(defun org-heading-string-p (string)
+  (let ((stars (position-if-not (lambda (c) (char= c #\*)) string)))
+    (and stars (plusp stars) (char= (char string stars) #\space))))
+
+(defun following-lines (point)
+  "The strings of POINT's line and every line after it."
+  (with-point ((p point))
+    (line-start p)
+    (loop :collect (line-string p) :while (line-offset p 1))))
+
+(defun replace-lines (start count new-lines)
+  "Replace COUNT lines from START by NEW-LINES. Only the span that differs is edited, so points outside it keep their place."
+  (with-point ((end start))
+    (dotimes (i (1- count)) (line-offset end 1))
+    (line-end end)
+    (let* ((old (points-to-string start end))
+           (new (format nil "~{~A~^~%~}" new-lines))
+           (prefix (or (mismatch old new) (length old)))
+           (room (- (min (length old) (length new)) prefix))
+           (suffix (loop :for i :below room
+                         :while (char= (char old (- (length old) i 1)) (char new (- (length new) i 1)))
+                         :count t)))
+      (unless (string= old new)
+        (with-point ((a start) (b start))
+          (character-offset a prefix)
+          (character-offset b (- (length old) suffix))
+          (delete-between-points a b)
+          (insert-string a (subseq new prefix (- (length new) suffix))))))))
+
+(defun org-renumber-list (point)
+  "Renumber the ordered list around POINT."
+  (let* ((start (item-block-start point))
+         (lines (following-lines start))
+         (count (or (position-if-not #'list-line-p lines) (length lines))))
+    (replace-lines start count (list-renumber (subseq lines 0 count)))))
+
+(defun org-item-at-point-p (point)
+  (list-item-parse (line-string point)))
+
+(defun org-insert-item (point)
+  "Insert an item after the item at POINT, with its sub-items, and renumber. Point moves to the new item."
+  (unless (org-item-at-point-p point)
+    (editor-error "Not on a list item"))
+  (let* ((lines (following-lines point))
+         (new (list-new-item (first lines)))
+         (extent (list-item-extent lines)))
+    (line-start point)
+    (dotimes (i (1- extent)) (line-offset point 1))
+    (line-end point)
+    (insert-string point (format nil "~%~A" new))
+    (let ((line (line-number-at-point point)))
+      (org-renumber-list point)
+      (move-to-line point line)
+      (line-end point))
+    point))
+
+(defun org-toggle-checkbox (point)
+  (let ((new (list-toggle-checkbox (line-string point))))
+    (unless new
+      (editor-error "Not on a list item"))
+    (replace-lines (line-start (copy-point point :temporary)) 1 (list new))))
+
+(define-command org-toggle-checkbox-command () ()
+  "Toggle the checkbox of the current list item."
+  (org-toggle-checkbox (current-point)))
+
+;;; Priorities, tags, planning and properties of a heading
+;;;
+;;; The pure functions work on the heading line or on the "head" of an entry: the heading, an
+;;; optional planning line (SCHEDULED, DEADLINE, CLOSED) and an optional :PROPERTIES: drawer.
+
+;;; BEGIN pure heading code
+
+(defun heading-split (line keywords)
+  "Return (values level todo priority title tags) of the heading LINE, or NIL when it is not a heading."
+  (let ((stars (position-if-not (lambda (c) (char= c #\*)) line)))
+    (when (and stars (plusp stars) (char= (char line stars) #\space))
+      (let ((rest (string-left-trim " " (subseq line stars)))
+            (todo nil) (priority nil) (tags nil))
+        (flet ((word-at-start-p (word)
+                 (and (>= (length rest) (length word))
+                      (string= word rest :end2 (length word))
+                      (or (= (length rest) (length word))
+                          (char= (char rest (length word)) #\space)))))
+          (let ((keyword (find-if #'word-at-start-p keywords)))
+            (when keyword
+              (setf todo keyword
+                    rest (string-left-trim " " (subseq rest (length keyword))))))
+          (when (and (>= (length rest) 4)
+                     (char= (char rest 0) #\[) (char= (char rest 1) #\#)
+                     (upper-case-p (char rest 2)) (char= (char rest 3) #\])
+                     (or (= (length rest) 4) (char= (char rest 4) #\space)))
+            (setf priority (char rest 2)
+                  rest (string-left-trim " " (subseq rest 4)))))
+        (let* ((trimmed (string-right-trim " 	" rest))
+               (cut (position-if (lambda (c) (member c '(#\space #\tab))) trimmed :from-end t))
+               (token (and cut (subseq trimmed (1+ cut)))))
+          (when (and token (> (length token) 2)
+                     (char= (char token 0) #\:) (char= (char token (1- (length token))) #\:)
+                     (notany (lambda (c) (member c '(#\space #\tab))) token)
+                     (not (search "::" token)))
+            (setf tags (loop :with from := 1
+                             :for colon := (position #\: token :start from)
+                             :while colon
+                             :collect (subseq token from colon)
+                             :do (setf from (1+ colon)))
+                  rest (string-right-trim " 	" (subseq trimmed 0 cut))))
+          (values stars todo priority (if tags rest trimmed) tags))))))
+
+(defvar *org-tags-column* 77
+  "Column at which the last character of a heading's tags is placed, when the title leaves room.")
+
+(defun heading-join (level todo priority title tags)
+  "The inverse of `heading-split'."
+  (let* ((body (format nil "~{~A~^ ~}"
+                       (remove nil (list todo
+                                         (and priority (format nil "[#~A]" priority))
+                                         (and (plusp (length title)) title)))))
+         (line (format nil "~A ~A" (make-string level :initial-element #\*) body)))
+    (if tags
+        (let* ((tag-string (format nil ":~{~A~^:~}:" tags))
+               (line (string-right-trim " " line))
+               (pad (max 1 (- *org-tags-column* (length line) (length tag-string)))))
+          (concatenate 'string line (make-string pad :initial-element #\space) tag-string))
+        (if (zerop (length body)) (format nil "~A " (make-string level :initial-element #\*)) line))))
+
+(defun heading-set-tags (line keywords tags)
+  (multiple-value-bind (level todo priority title) (heading-split line keywords)
+    (unless level (editor-error "Not on a heading"))
+    (heading-join level todo priority title tags)))
+
+(defun heading-cycle-priority (line keywords delta)
+  "Move the priority of the heading LINE through none, C, B, A (DELTA +1, up) or the reverse (DELTA -1)."
+  (multiple-value-bind (level todo priority title tags) (heading-split line keywords)
+    (unless level (editor-error "Not on a heading"))
+    (let* ((ring '(nil #\C #\B #\A))
+           (next (nth (mod (+ (or (position priority ring) 0) delta) (length ring)) ring)))
+      (heading-join level todo next title tags))))
+
+(defun parse-tag-input (string)
+  "Split STRING such as \"work:home\" or \":work:home:\" or \"work home\" into tags."
+  (let ((tags '()) (start 0))
+    (loop :for i :from 0 :to (length string)
+          :do (when (or (= i (length string)) (find (char string i) ": 	"))
+                (when (> i start) (push (subseq string start i) tags))
+                (setf start (1+ i))))
+    (nreverse tags)))
+
+(defun planning-line-p (line)
+  (let ((s (string-left-trim " " line)))
+    (some (lambda (keyword)
+            (and (>= (length s) (1+ (length keyword)))
+                 (string= keyword s :end2 (length keyword))
+                 (char= (char s (length keyword)) #\:)))
+          '("SCHEDULED" "DEADLINE" "CLOSED"))))
+
+(defun planning-parse (line)
+  "Return an alist of (keyword . timestamp) found in the planning LINE."
+  (loop :for keyword :in '("CLOSED" "SCHEDULED" "DEADLINE")
+        :for at := (search (format nil "~A: " keyword) line)
+        :for open := (and at (+ at (length keyword) 2))
+        :for close := (and open (< open (length line))
+                           (position (if (char= (char line open) #\<) #\> #\]) line :start open))
+        :when close :collect (cons keyword (subseq line open (1+ close)))))
+
+(defun planning-format (alist)
+  (format nil "~{~A~^ ~}"
+          (loop :for keyword :in '("CLOSED" "SCHEDULED" "DEADLINE")
+                :for entry := (assoc keyword alist :test #'string=)
+                :when entry :collect (format nil "~A: ~A" (car entry) (cdr entry)))))
+
+(defun timestamp-day-name (year month day)
+  (nth (nth-value 6 (decode-universal-time (encode-universal-time 0 0 12 day month year 0) 0))
+       '("Mon" "Tue" "Wed" "Thu" "Fri" "Sat" "Sun")))
+
+(defun format-timestamp (year month day &optional active)
+  (format nil (if active "<~4,'0D-~2,'0D-~2,'0D ~A>" "[~4,'0D-~2,'0D-~2,'0D ~A]")
+          year month day (timestamp-day-name year month day)))
+
+(defun parse-date-input (string year month day)
+  "Return (values year month day) for STRING: empty (today, given as YEAR MONTH DAY), YYYY-MM-DD, +Nd or +Nw."
+  (let ((string (string-trim " " string)))
+    (cond ((string= string "") (values year month day))
+          ((and (char= (char string 0) #\+) (> (length string) 2)
+                (find (char string (1- (length string))) "dw")
+                (parse-integer string :start 1 :end (1- (length string)) :junk-allowed t))
+           (let* ((n (parse-integer string :start 1 :end (1- (length string))))
+                  (n (if (char= (char string (1- (length string))) #\w) (* 7 n) n)))
+             (multiple-value-bind (s mi h d m y)
+                 (decode-universal-time (+ (encode-universal-time 0 0 12 day month year 0) (* n 86400)) 0)
+               (declare (ignore s mi h))
+               (values y m d))))
+          ((and (= (length string) 10) (char= (char string 4) #\-) (char= (char string 7) #\-))
+           (let ((y (parse-integer string :end 4 :junk-allowed t))
+                 (m (parse-integer string :start 5 :end 7 :junk-allowed t))
+                 (d (parse-integer string :start 8 :junk-allowed t)))
+             (unless (and y m d (<= 1 m 12) (<= 1 d 31))
+               (editor-error "Invalid date: ~A" string))
+             (values y m d)))
+          (t (editor-error "Invalid date: ~A (use YYYY-MM-DD, +3d or +1w)" string)))))
+
+(defun head-length (lines)
+  "How many of LINES, which start with a heading, form its head: heading, planning line, properties drawer."
+  (let ((count 1))
+    (when (and (nth count lines) (planning-line-p (nth count lines)))
+      (incf count))
+    (when (and (nth count lines) (string-equal (string-trim " " (nth count lines)) ":PROPERTIES:"))
+      (let ((end (position-if (lambda (line) (string-equal (string-trim " " line) ":END:"))
+                              lines :start count)))
+        (when end (setf count (1+ end)))))
+    count))
+
+(defun head-split (head)
+  "Return (values heading planning drawer) for the HEAD lines."
+  (let* ((planning (and (second head) (planning-line-p (second head)) (second head)))
+         (drawer (nthcdr (if planning 2 1) head)))
+    (values (first head) planning drawer)))
+
+(defun head-set-planning (head keyword stamp)
+  "Set (or, when STAMP is NIL, remove) the planning KEYWORD in the HEAD lines."
+  (multiple-value-bind (heading planning drawer) (head-split head)
+    (let* ((alist (remove keyword (and planning (planning-parse planning)) :key #'car :test #'string=))
+           (alist (if stamp (acons keyword stamp alist) alist)))
+      (append (list heading)
+              (and alist (list (planning-format alist)))
+              drawer))))
+
+(defun head-set-property (head name value)
+  "Set the property NAME to VALUE in the :PROPERTIES: drawer of the HEAD lines, creating the drawer if needed."
+  (multiple-value-bind (heading planning drawer) (head-split head)
+    (let* ((prefix (format nil ":~A:" name))
+           (new (if (zerop (length value)) prefix (format nil "~A ~A" prefix value)))
+           (body (if drawer (butlast (rest drawer)) '()))
+           (index (position-if (lambda (line)
+                                 (let ((s (string-left-trim " " line)))
+                                   (and (>= (length s) (length prefix))
+                                        (string-equal prefix s :end2 (length prefix)))))
+                               body)))
+      (append (list heading)
+              (and planning (list planning))
+              (list ":PROPERTIES:")
+              (if index
+                  (append (subseq body 0 index) (list new) (nthcdr (1+ index) body))
+                  (append body (list new)))
+              (list ":END:")))))
+
+;;; END pure heading code
+
+(defun today ()
+  (multiple-value-bind (s mi h day month year) (decode-universal-time (get-universal-time))
+    (declare (ignore s mi h))
+    (values year month day)))
+
+(defun heading-point (point)
+  "A point on the line of the heading that owns POINT, or an editor error."
+  (or (enclosing-heading point)
+      (editor-error "Not under a heading")))
+
+(defun org-edit-head (point function)
+  "Replace the head (heading, planning line, properties drawer) of the entry at POINT by (FUNCTION head-lines)."
+  (let* ((heading (heading-point point))
+         (lines (let ((all (following-lines heading)))
+                  (subseq all 0 (or (position-if #'org-heading-string-p all :start 1) (length all)))))
+         (count (head-length lines)))
+    (replace-lines heading count (funcall function (subseq lines 0 count)))))
+
+(defun org-edit-heading-line (point function)
+  "Replace the text of the heading line that owns POINT by (FUNCTION line)."
+  (let ((heading (heading-point point)))
+    (replace-lines heading 1 (list (funcall function (line-string heading))))))
+
+(defun org-set-tags (point tags)
+  (org-edit-heading-line point (lambda (line) (heading-set-tags line *org-todo-keywords* tags))))
+
+(defun org-cycle-priority (point delta)
+  (org-edit-heading-line point (lambda (line) (heading-cycle-priority line *org-todo-keywords* delta))))
+
+(defun org-set-planning (point keyword stamp)
+  (org-edit-head point (lambda (head) (head-set-planning head keyword stamp))))
+
+(defun org-set-property (point name value)
+  (org-edit-head point (lambda (head) (head-set-property head name value))))
+
+(defun org-todo-update-closed (point)
+  "Add a CLOSED timestamp when the entry at POINT is in its last todo state, and remove it otherwise."
+  (let* ((heading (heading-point point))
+         (done (equal (nth-value 1 (heading-split (line-string heading) *org-todo-keywords*))
+                      (car (last *org-todo-keywords*)))))
+    (org-set-planning point "CLOSED" (and done (multiple-value-call #'format-timestamp (today))))))
+
+(define-command org-set-tags-command () ()
+  "Set the tags of the current heading. Enter them as work:home or :work:home:."
+  (let ((heading (heading-point (current-point))))
+    (multiple-value-bind (level todo priority title tags)
+        (heading-split (line-string heading) *org-todo-keywords*)
+      (declare (ignore todo priority title))
+      (unless level (editor-error "Not on a heading"))
+      (org-set-tags (current-point)
+                    (parse-tag-input (prompt-for-string "Tags: "
+                                                        :initial-value (format nil "~{~A~^:~}" tags)))))))
+
+(define-command org-priority-up () ()
+  "Raise the priority of the current heading: none, C, B, A, none."
+  (org-cycle-priority (current-point) 1))
+
+(define-command org-priority-down () ()
+  "Lower the priority of the current heading: none, A, B, C, none."
+  (org-cycle-priority (current-point) -1))
+
+(defun prompt-for-planning (keyword)
+  (multiple-value-bind (year month day) (today)
+    (multiple-value-bind (y m d)
+        (parse-date-input (prompt-for-string (format nil "~A date (YYYY-MM-DD, +3d, +1w; empty for today): "
+                                                    (string-capitalize keyword)))
+                          year month day)
+      (org-set-planning (current-point) keyword (format-timestamp y m d (string/= keyword "CLOSED"))))))
+
+(define-command org-schedule () ()
+  "Set the SCHEDULED date of the current entry."
+  (prompt-for-planning "SCHEDULED"))
+
+(define-command org-deadline () ()
+  "Set the DEADLINE date of the current entry."
+  (prompt-for-planning "DEADLINE"))
+
+(define-command org-set-property-command () ()
+  "Set a property in the :PROPERTIES: drawer of the current entry."
+  (let ((name (prompt-for-string "Property: ")))
+    (org-set-property (current-point) name (prompt-for-string (format nil "~A value: " name)))))
+
+;;; Babel: run SQL source blocks
+;;;
+;;;   #+begin_src sql :engine postgres :db mydb :host localhost :user me
+;;;   select 1;
+;;;   #+end_src
+;;;
+;;; C-c C-c inside the block runs it and puts the result table under a #+RESULTS: line.
+
+;;; BEGIN pure babel code
+
+(defun src-begin-line-p (line)
+  (let ((s (string-left-trim " 	" line)))
+    (and (>= (length s) 11) (string-equal "#+begin_src" s :end2 11))))
+
+(defun src-end-line-p (line)
+  (let ((s (string-left-trim " 	" line)))
+    (and (>= (length s) 9) (string-equal "#+end_src" s :end2 9))))
+
+(defun split-words (string)
+  (let ((words '()) (start nil))
+    (loop :for i :from 0 :to (length string)
+          :for blank := (or (= i (length string)) (member (char string i) '(#\space #\tab)))
+          :do (cond ((and blank start) (push (subseq string start i) words) (setf start nil))
+                    ((and (not blank) (not start)) (setf start i))))
+    (nreverse words)))
+
+(defun src-header (line)
+  "Return (values language args) for a #+begin_src LINE. ARGS is an alist of (name . value), names without the colon."
+  (let* ((words (split-words line))
+         (rest (cddr words))
+         (args '()))
+    (loop :while rest
+          :do (let ((word (first rest)))
+                (if (and (> (length word) 1) (char= (char word 0) #\:))
+                    (let ((value (and (second rest) (not (char= (char (second rest) 0) #\:))
+                                      (second rest))))
+                      (push (cons (string-downcase (subseq word 1)) (or value "t")) args)
+                      (setf rest (nthcdr (if value 2 1) rest)))
+                    (setf rest (rest rest)))))
+    (values (second words) (nreverse args))))
+
+(defun csv-parse (text)
+  "Parse CSV TEXT, with quoted fields, into a list of rows of strings."
+  (let ((rows '()) (row '()) (field (make-string-output-stream)) (quoted nil) (started nil) (i 0)
+        (n (length text)))
+    (flet ((end-field () (push (get-output-stream-string field) row) (setf started nil))
+           (end-row () (push (nreverse row) rows) (setf row '())))
+      (loop :while (< i n)
+            :do (let ((c (char text i)))
+                  (cond (quoted
+                         (cond ((and (char= c #\") (< (1+ i) n) (char= (char text (1+ i)) #\"))
+                                (write-char #\" field) (incf i))
+                               ((char= c #\") (setf quoted nil))
+                               (t (write-char c field))))
+                        ((char= c #\") (setf quoted t started t))
+                        ((char= c #\,) (end-field) (setf started t))
+                        ((char= c #\return))
+                        ((char= c #\newline) (when (or started row) (end-field) (end-row)))
+                        (t (write-char c field) (setf started t))))
+               (incf i))
+      (when (or started row) (end-field) (end-row)))
+    (nreverse rows)))
+
+(defun delimited-parse (text delimiter)
+  "Split the lines of TEXT at DELIMITER, dropping blank lines, rulers and \"(n rows affected)\" footers."
+  (let ((rows '()))
+    (loop :with start := 0
+          :for end := (or (position #\newline text :start start) (length text))
+          :do (let ((line (string-trim '(#\space #\tab #\return) (subseq text start end))))
+                (unless (or (string= line "")
+                            (every (lambda (c) (or (char= c #\-) (char= c delimiter) (char= c #\space))) line)
+                            (and (char= (char line 0) #\() (search "affected)" line)))
+                  (push (loop :with from := 0
+                              :for bar := (position delimiter line :start from)
+                              :collect (string-trim " " (subseq line from bar))
+                              :while bar :do (setf from (1+ bar)))
+                        rows)))
+          :while (< end (length text))
+          :do (setf start (1+ end)))
+    (nreverse rows)))
+
+(defun sql-statements-per-line (sql)
+  "Put every ;-terminated statement of SQL on one line, as isql expects."
+  (format nil "~{~A~%~}"
+          (loop :with flat := (substitute #\space #\newline sql)
+                :with start := 0
+                :for semi := (position #\; flat :start start)
+                :for piece := (string-trim " " (subseq flat start semi))
+                :when (plusp (length piece)) :collect (format nil "~A;" piece)
+                :while semi :do (setf start (1+ semi)))))
+
+(defvar *org-sql-default-engine* "postgres")
+
+(defun sql-engine-kind (name)
+  (cond ((member name '("postgres" "postgresql" "psql") :test #'string-equal) :psql)
+        ((member name '("mssql" "sqlserver" "sqlcmd") :test #'string-equal) :sqlcmd)
+        ((member name '("db2i" "ibmi" "odbc" "isql") :test #'string-equal) :isql)
+        (t (editor-error "Unknown SQL engine ~A (use postgres, mssql or db2i)" name))))
+
+(defun sql-command (kind args)
+  "Return (values argv parser) to run SQL of engine KIND with the header ARGS (an alist)."
+  (flet ((arg (name) (cdr (assoc name args :test #'string=))))
+    (ecase kind
+      (:psql
+       (values (append (list "psql" "-X" "-q" "--csv")
+                       (and (arg "host") (list "-h" (arg "host")))
+                       (and (arg "port") (list "-p" (arg "port")))
+                       (and (arg "user") (list "-U" (arg "user")))
+                       (and (arg "db") (list "-d" (arg "db"))))
+               (lambda (output) (csv-parse output))))
+      (:sqlcmd
+       (values (append (list "sqlcmd" "-W" "-s" "|")
+                       (and (arg "host") (list "-S" (if (arg "port")
+                                                         (format nil "~A,~A" (arg "host") (arg "port"))
+                                                         (arg "host"))))
+                       (and (arg "db") (list "-d" (arg "db")))
+                       (if (arg "user")
+                           (append (list "-U" (arg "user"))
+                                   (and (arg "password") (list "-P" (arg "password"))))
+                           (list "-E")))
+               (lambda (output) (delimited-parse output #\|))))
+      (:isql
+       (values (append (list "isql" (or (arg "db") (editor-error "The db2i engine needs :db <ODBC data source>")))
+                       (and (arg "user") (list (arg "user")))
+                       (and (arg "user") (arg "password") (list (arg "password")))
+                       (list "-b" "-c" "-d|"))
+               (lambda (output) (delimited-parse output #\|)))))))
+
+(defun results-lines (rows)
+  "The #+RESULTS: block for ROWS, with a rule under the header row, as lines of text."
+  (cons "#+RESULTS:"
+        (if (null rows)
+            (list ": (no rows)")
+            (org-table-format-rows (if (cdr rows)
+                                       (list* (first rows) :rule (rest rows))
+                                       rows)))))
+
+(defun results-region-length (lines)
+  "LINES follow a #+end_src line. Return how many of them (blanks, #+RESULTS: and its output) form an old result."
+  (let* ((blanks (or (position-if (lambda (line) (string/= (string-trim " " line) "")) lines)
+                     (length lines)))
+         (header (nth blanks lines)))
+    (if (and header (>= (length header) 10) (string-equal "#+RESULTS:" header :end2 10))
+        (+ blanks 1
+           (or (position-if-not (lambda (line)
+                                  (or (table-line-p line)
+                                      (and (>= (length line) 2) (string= ": " line :end2 2))))
+                                (nthcdr (1+ blanks) lines))
+               (length (nthcdr (1+ blanks) lines))))
+        0)))
+
+;;; END pure babel code
+
+(defun src-block-bounds (point)
+  "Return (values begin end) points on the #+begin_src and #+end_src lines around POINT, or NIL."
+  (let ((begin (copy-point point :temporary))
+        (end (copy-point point :temporary)))
+    (line-start begin)
+    (line-start end)
+    (when (src-end-line-p (line-string begin))
+      (line-offset begin -1))
+    (loop :until (src-begin-line-p (line-string begin))
+          :do (when (or (src-end-line-p (line-string begin)) (not (line-offset begin -1)))
+                (return-from src-block-bounds nil)))
+    (loop :until (src-end-line-p (line-string end))
+          :do (unless (line-offset end 1)
+                (return-from src-block-bounds nil)))
+    (values begin end)))
+
+(defvar *org-sql-timeout* 60
+  "Seconds before a SQL command is given up on.")
+
+(defun run-sql (kind args sql)
+  "Run SQL with the command for engine KIND and return the output rows."
+  (multiple-value-bind (argv parser) (sql-command kind args)
+    (multiple-value-bind (output error-output status)
+        (handler-case
+            (uiop:run-program argv
+                              :input (make-string-input-stream (if (eq kind :isql) (sql-statements-per-line sql) sql))
+                              :output :string :error-output :string :ignore-error-status t)
+          (error (e) (editor-error "Cannot run ~A: ~A" (first argv) e)))
+      (unless (zerop status)
+        (editor-error "~A failed: ~A" (first argv)
+                      (let ((message (string-trim '(#\space #\newline #\return) (if (plusp (length error-output)) error-output output))))
+                        (subseq message 0 (position #\newline message)))))
+      (funcall parser output))))
+
+(defun org-babel-execute (point)
+  "Run the SQL source block around POINT and write the result table below it."
+  (multiple-value-bind (begin end) (src-block-bounds point)
+    (unless begin
+      (editor-error "Not in a source block"))
+    (multiple-value-bind (language args) (src-header (line-string begin))
+      (unless (and language (string-equal language "sql"))
+        (editor-error "Only sql blocks can be run (this one is ~A)" (or language "untyped")))
+      (let* ((sql (with-point ((body-start begin))
+                    (line-offset body-start 1)
+                    (if (point< body-start end) (points-to-string body-start (line-start (copy-point end :temporary))) "")))
+             (kind (sql-engine-kind (or (cdr (assoc "engine" args :test #'string=)) *org-sql-default-engine*)))
+             (rows (run-sql kind args sql))
+             (after (let ((p (copy-point end :temporary))) (and (line-offset p 1) p))))
+        (if after
+            (let* ((lines (following-lines after))
+                   (old (results-region-length lines)))
+              (if (plusp old)
+                  (replace-lines after old (cons "" (results-lines rows)))
+                  (progn (line-start end) (line-end end)
+                         (insert-string end (format nil "~%~{~A~^~%~}" (cons "" (results-lines rows)))))))
+            (progn (line-end end)
+                   (insert-string end (format nil "~%~{~A~^~%~}" (cons "" (results-lines rows))))))))))
+
+(define-command org-ctrl-c-ctrl-c () ()
+  "Do the context-appropriate action: realign a table, toggle a checkbox, or run a source block."
+  (let ((point (current-point)))
+    (cond ((org-table-at-point-p point) (org-table-edit point :align))
+          ((org-item-at-point-p point) (org-toggle-checkbox point))
+          ((src-block-bounds point) (org-babel-execute point))
+          (t (editor-error "Nothing to do here")))))
 
 (define-file-type ("org") org-mode)
