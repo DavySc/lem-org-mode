@@ -184,8 +184,8 @@
 (define-key *org-agenda-mode-keymap* "Return" 'org-agenda-goto)
 (define-key *org-agenda-mode-keymap* "q" 'org-agenda-quit)
 
-(defun show-agenda (title records)
-  "Show RECORDS, a list of (line-text . entry-or-nil), in the agenda buffer."
+(defun agenda-buffer (title records)
+  "The agenda buffer holding RECORDS, a list of (line-text . entry-or-nil), under TITLE."
   (let ((buffer (or (get-buffer "*Org Agenda*") (make-buffer "*Org Agenda*"))))
     (with-buffer-read-only buffer nil
       (erase-buffer buffer)
@@ -195,6 +195,10 @@
             (coerce (cons nil (mapcar #'cdr records)) 'vector)))
     (change-buffer-mode buffer 'org-agenda-mode)
     (setf (buffer-read-only-p buffer) t)
+    buffer))
+
+(defun show-agenda (title records)
+  (let ((buffer (agenda-buffer title records)))
     (switch-to-buffer buffer)
     (buffer-start (current-point))
     buffer))

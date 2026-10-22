@@ -19,6 +19,7 @@
            :org-set-planning
            :org-set-property
            :org-clock-in
+           :org-clock-running
            :org-clock-out
            :org-clock-cancel
            :org-babel-execute
@@ -34,7 +35,22 @@
            :org-agenda-tags
            :org-export-html
            :org-export-markdown
-           :org-babel-tangle))
+           :org-babel-tangle
+           :org-babel-execute-src-block
+           :org-babel-execute-buffer
+           :org-babel-execute-subtree
+           :org-babel-next-src-block
+           :org-babel-previous-src-block
+           :org-babel-goto-named-src-block
+           :org-babel-remove-result
+           :org-babel-expand-src-block
+           :org-babel-info
+           :org-babel-reset-sessions
+           :org-edit-src-block
+           :org-edit-src-exit
+           :org-edit-src-abort
+           :*org-babel-default-header-args*
+           :*org-babel-confirm-evaluate*))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
@@ -123,16 +139,25 @@
 (define-key *org-mode-keymap* "C-c C-d" 'org-deadline)
 (define-key *org-mode-keymap* "C-c C-q" 'org-set-tags-command)
 (define-key *org-mode-keymap* "C-c C-x p" 'org-set-property-command)
-(define-key *org-mode-keymap* "C-c C-x C-i" 'org-clock-in-command)
-(define-key *org-mode-keymap* "C-c C-x C-o" 'org-clock-out-command)
-(define-key *org-mode-keymap* "C-c C-x C-q" 'org-clock-cancel-command)
-
 (define-key *org-mode-keymap* "C-c a a" 'org-agenda-week)
 (define-key *org-mode-keymap* "C-c a t" 'org-agenda-todo-list)
 (define-key *org-mode-keymap* "C-c a m" 'org-agenda-tags)
 (define-key *org-mode-keymap* "C-c C-e h" 'org-export-html)
 (define-key *org-mode-keymap* "C-c C-e m" 'org-export-markdown)
 (define-key *org-mode-keymap* "C-c C-v t" 'org-babel-tangle)
+(define-key *org-mode-keymap* "C-c C-v e" 'org-babel-execute-src-block)
+(define-key *org-mode-keymap* "C-c C-v b" 'org-babel-execute-buffer)
+(define-key *org-mode-keymap* "C-c C-v s" 'org-babel-execute-subtree)
+(define-key *org-mode-keymap* "C-c C-v n" 'org-babel-next-src-block)
+(define-key *org-mode-keymap* "C-c C-v p" 'org-babel-previous-src-block)
+(define-key *org-mode-keymap* "C-c C-v g" 'org-babel-goto-named-src-block)
+(define-key *org-mode-keymap* "C-c C-v v" 'org-babel-expand-src-block)
+(define-key *org-mode-keymap* "C-c C-v k" 'org-babel-remove-result)
+(define-key *org-mode-keymap* "C-c C-v I" 'org-babel-info)
+(define-key *org-mode-keymap* "C-c '" 'org-edit-src-block)
+(define-key *org-mode-keymap* "C-c C-x C-i" 'org-clock-in-command)
+(define-key *org-mode-keymap* "C-c C-x C-o" 'org-clock-out-command)
+(define-key *org-mode-keymap* "C-c C-x C-q" 'org-clock-cancel-command)
 
 (defun org-heading-level (point)
   "Return the number of stars if POINT's line is an Org heading, otherwise NIL."
@@ -1213,21 +1238,6 @@ Return the second value of FUNCTION."
                     ((and (not blank) (not start)) (setf start i))))
     (nreverse words)))
 
-(defun src-header (line)
-  "Return (values language args) for a #+begin_src LINE. ARGS is an alist of (name . value), names without the colon."
-  (let* ((words (split-words line))
-         (rest (cddr words))
-         (args '()))
-    (loop :while rest
-          :do (let ((word (first rest)))
-                (if (and (> (length word) 1) (char= (char word 0) #\:))
-                    (let ((value (and (second rest) (not (char= (char (second rest) 0) #\:))
-                                      (second rest))))
-                      (push (cons (string-downcase (subseq word 1)) (or value "t")) args)
-                      (setf rest (nthcdr (if value 2 1) rest)))
-                    (setf rest (rest rest)))))
-    (values (second words) (nreverse args))))
-
 (defun csv-parse (text)
   "Parse CSV TEXT, with quoted fields, into a list of rows of strings."
   (let ((rows '()) (row '()) (field (make-string-output-stream)) (quoted nil) (started nil) (i 0)
@@ -1335,29 +1345,6 @@ Return the second value of FUNCTION."
                        (list "-b" "-c" "-d|"))
                (lambda (output) (delimited-parse output #\|)))))))
 
-(defun results-lines (rows)
-  "The #+RESULTS: block for ROWS, with a rule under the header row, as lines of text."
-  (cons "#+RESULTS:"
-        (if (null rows)
-            (list ": (no rows)")
-            (org-table-format-rows (if (cdr rows)
-                                       (list* (first rows) :rule (rest rows))
-                                       rows)))))
-
-(defun results-region-length (lines)
-  "LINES follow a #+end_src line. Return how many of them (blanks, #+RESULTS: and its output) form an old result."
-  (let* ((blanks (or (position-if (lambda (line) (string/= (string-trim " " line) "")) lines)
-                     (length lines)))
-         (header (nth blanks lines)))
-    (if (and header (>= (length header) 10) (string-equal "#+RESULTS:" header :end2 10))
-        (+ blanks 1
-           (or (position-if-not (lambda (line)
-                                  (or (table-line-p line)
-                                      (and (>= (length line) 2) (string= ": " line :end2 2))))
-                                (nthcdr (1+ blanks) lines))
-               (length (nthcdr (1+ blanks) lines))))
-        0)))
-
 ;;; END pure babel code
 
 (defun src-block-bounds (point)
@@ -1392,40 +1379,12 @@ Return the second value of FUNCTION."
                         (subseq flat 0 (min 300 (length flat))))))
       (funcall parser output))))
 
-(defun insert-results (end lines)
-  "Write the result LINES (starting with #+RESULTS:) under the #+end_src line at END, replacing an older result."
-  (let ((after (let ((p (copy-point end :temporary))) (and (line-offset p 1) p)))
-        (new (cons "" lines)))
-    (let ((old (if after (results-region-length (following-lines after)) 0)))
-      (if (plusp old)
-          (replace-lines after old new)
-          (progn (line-end end)
-                 (insert-string end (format nil "~%~{~A~^~%~}" new)))))))
-
-(defun org-babel-execute (point)
-  "Run the source block around POINT and write its result under it."
-  (multiple-value-bind (begin end) (src-block-bounds point)
-    (unless begin
-      (editor-error "Not in a source block"))
-    (multiple-value-bind (language args) (src-header (line-string begin))
-      (unless language
-        (editor-error "The source block has no language"))
-      (let* ((body (with-point ((body-start begin))
-                     (line-offset body-start 1)
-                     (if (point< body-start end)
-                         (points-to-string body-start (line-start (copy-point end :temporary)))
-                         "")))
-             (lines (babel-result-lines language args body)))
-        (if lines
-            (insert-results end lines)
-            (message "Done (results silenced)"))))))
-
 (define-command org-ctrl-c-ctrl-c () ()
-  "Do the context-appropriate action: realign a table, toggle a checkbox, or run a source block."
+  "Do the context-appropriate action: run a source block or #+CALL:, realign a table, or toggle a checkbox."
   (let ((point (current-point)))
-    (cond ((org-table-at-point-p point) (org-table-edit point :align))
+    (cond ((or (src-block-bounds point) (org-call-line-p point)) (org-babel-execute point))
+          ((org-table-at-point-p point) (org-table-edit point :align))
           ((org-item-at-point-p point) (org-toggle-checkbox point))
-          ((src-block-bounds point) (org-babel-execute point))
           (t (editor-error "Nothing to do here")))))
 
 (define-file-type ("org") org-mode)
