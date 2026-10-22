@@ -40,22 +40,73 @@ It reads the current buffer. To read several files set, in `init.lisp`, `(setf l
 
 `C-c C-e h` writes `file.html` and `C-c C-e m` writes `file.md` next to the buffer's file (or opens a buffer when it has none). Supported: `#+TITLE:` / `#+AUTHOR:`, headings with TODO, priority and tags, planning lines, paragraphs, nested and numbered lists with checkboxes, tables (a rule after the first rows makes them the header), `src` / `example` / `quote` / `center` / `verse` blocks, `: ` example lines, `#+begin_export html|md` passthrough, links, `*bold* /italic/ _underline_ =code= ~code~ +strike+`. `:PROPERTIES:` drawers and `#+begin_comment` / `# ` comments are dropped. `:exports code` (default) shows the block, `results` its result, `both` both, `none` neither. No footnotes, LaTeX or images.
 
-### Source blocks (Babel)
+### Source blocks (Babel / literate programming)
 
-`C-c C-c` inside a block runs it and writes the result under `#+RESULTS:`, replacing an older result. Header arguments: `:var name=value` (repeatable; numbers are passed as numbers, anything else, or `"quoted text"`, as a string), `:results output|table|silent` (default `output`, shown as `: ` lines; `table` splits the output into cells at tabs, or at blanks when there are none), `:dir`, `:cmdline`, `:exports`, `:tangle yes|no|file` (used by `C-c C-v t`).
+Everything here follows Org's header-argument model. `C-c C-c` (or `C-c C-v e`) runs the block or `#+CALL:` line at point.
 
-| Language | Interpreter run on a temporary file |
+```org
+#+PROPERTY: header-args:python :results value
+#+NAME: squares
+#+begin_src python :var n=4
+return [[i, i * i] for i in range(n)]
+#+end_src
+
+#+begin_src sh :var table=squares :results output
+echo "$table"
+#+end_src
+
+#+CALL: squares(n=10)
+```
+
+| Key | Command | Does |
+|---|---|---|
+| `C-c C-c`, `C-c C-v e` | `org-babel-execute-src-block` | run the block / `#+CALL:` at point |
+| `C-c C-v b` / `s` | `org-babel-execute-buffer` / `-subtree` | run every block under the buffer / heading, top to bottom |
+| `C-c C-v n` / `p` | `org-babel-next-src-block` / `-previous-` | move between blocks |
+| `C-c C-v g` | `org-babel-goto-named-src-block` | jump to a `#+NAME:`d block, table, list or result |
+| `C-c C-v v` | `org-babel-expand-src-block` | show the program that would run (variables, noweb, wrappers) |
+| `C-c C-v k` | `org-babel-remove-result` | delete the block's result |
+| `C-c C-v I` | `org-babel-info` | language and effective header arguments |
+| `C-c C-v t` | `org-babel-tangle` | write blocks with `:tangle` to their files |
+| `C-c '` | `org-edit-src-block` | edit the body in its own buffer in the language's mode; `C-c '` writes back, `C-c C-k` discards |
+
+**Header arguments** are inherited, later wins: `*org-babel-default-header-args*`, then `#+PROPERTY: header-args` and `header-args:LANG` lines, then `:header-args:` / `:header-args:LANG:` in the `:PROPERTIES:` drawers of the enclosing headings, then the block. `:var` accumulates by name; `:results` tokens replace by category.
+
+| Argument | Meaning |
+|---|---|
+| `:var x=value`, `:var x=name`, `:var x=name(a=1, 2)` | a number, `"a string"`, or a reference to a `#+NAME:`d table, list, example, `#+RESULTS: name`, or source block (which is run). Tables, lists and values become native lists / arrays / vectors in python, js, ruby, perl, php, lua, R, powershell and lisp, and tab-separated text in shell. In `sql`, `$x` in the query is replaced. |
+| `:colnames yes\|no`, `:hlines yes\|no`, `:rownames yes` | a table's header row (taken off the input when followed by a rule, and put back on a table result), horizontal lines, first column |
+| `:results value\|output` | what to collect (default `value`, Org's default): the value the block returns — `return` in python and js, the last expression in ruby / perl / R / lisp / powershell, the output of a shell block — or everything printed |
+| `:results table\|list\|scalar\|verbatim\|file` | the shape; lists and tables are detected from the value by default |
+| `:results raw\|code\|drawer\|html\|latex\|org` and `:wrap [name]` | how to wrap it |
+| `:results replace\|append\|prepend\|silent` | what to do with an older result |
+| `:file out.png :file-desc "Plot"` | with `:results file`, the result is a link `[[file:out.png]]` (the code writes the file) |
+| `:session name` | later blocks with the same session and language see the variables of earlier ones. Emulated: the earlier blocks are run again, with their output discarded, so side effects repeat. `M-x org-babel-reset-sessions` forgets them. |
+| `:cache yes` | the result carries a hash (`#+RESULTS[hash]:`); an unchanged block is not run again |
+| `:eval never\|no\|query` | refuse to run, or ask first (`*org-babel-confirm-evaluate*` asks for every block) |
+| `:noweb yes\|tangle\|no-export\|strip-export\|eval\|query\|no` | expand `<<name>>` by the body of the block with that `#+NAME:`, or by all blocks with `:noweb-ref name` (joined by `:noweb-sep`, default newline); indentation is kept; `<<name(1)>>` runs the block |
+| `:prologue "..."`, `:epilogue "..."`, `:dir`, `:cmdline`, `:post name(data=*this*)` | text around the body, working directory, extra arguments for the program, post-processing by another block |
+| `:exports code\|results\|both\|none` | what export shows (also from inherited arguments) |
+| `:tangle yes\|no\|file`, `:mkdirp yes`, `:shebang "#!/bin/sh"`, `:tangle-mode (identity #o755)`, `:padline no`, `:comments link\|org\|both` | tangling: `yes` names the file after the Org file; `:shebang` makes the file executable; `:comments` adds a comment with a link back to the Org heading |
+
+`#+CALL: name[inside header args](arguments)[end header args]` runs a named block with other variables and writes `#+RESULTS: name` under the call line. `#+NAME:` also names tables, lists and example blocks for `:var`.
+
+| Language | Run with |
 |---|---|
 | `sh` / `bash`, `zsh` | `bash`, `zsh` |
 | `python` | `python3` |
 | `javascript` / `js` | `node` |
-| `ruby`, `perl`, `lua` | `ruby`, `perl`, `lua` |
+| `ruby`, `perl`, `php`, `lua` | `ruby`, `perl`, `php`, `lua` |
 | `r` | `Rscript` |
 | `powershell` / `pwsh` | `pwsh -NoProfile -File` |
 | `lisp` / `sbcl` | `sbcl --script` |
+| `c`, `cpp` | `gcc` / `g++`, then the program; a block without `main` is wrapped in one, as in Org |
+| `go`, `java`, `haskell` | `go run`, `java` (single-file mode), `runghc` — output only, no `:var` |
 | `sql` | see below |
 
-The interpreters must be on `PATH`. To change one, edit `lem-org-mode:*org-babel-languages*`, for example python on Windows: `(setf (getf (cdr (assoc '("python" "py" "python3") lem-org-mode:*org-babel-languages* :test #'equal)) :argv) '("python"))`. Only `:results output` is supported (what the program prints), not `value`; there are no sessions.
+The interpreters must be on `PATH`; change one in `lem-org-mode:*org-babel-languages*` (for example python on Windows: `(setf (getf (cdr (assoc '("python" "py" "python3") lem-org-mode:*org-babel-languages* :test #'equal)) :argv) '("python"))`). There is no timeout: a block that never ends blocks Lem.
+
+Not supported: inline `src_python{}` / `call_name()`, the Library of Babel, `:var` indexes (`name[1,2]`) and references to other files, real interpreter sessions, `:stdin`, running blocks as part of export (run `C-c C-v b` first; export uses the results in the buffer), detangling.
 
 #### SQL blocks
 
@@ -77,7 +128,7 @@ The client must be on `PATH`. Do not commit passwords in header arguments.
 
 ## Not yet
 
-Statistics cookies (`[1/3]`), tag inheritance and completion, recurring timestamps, clocking, capture and refile, `:results value`, Babel sessions, footnotes and LaTeX in export, and a Db2 for i route that does not need ODBC. Heading detection in the editing commands does not skip `*` lines inside src blocks (the agenda and export do). Table column widths count characters, so wide (CJK) text misaligns. Under `lem-vi-mode`, normal-state keys can shadow the keys above; use `M-x` or add normal-state bindings.
+Statistics cookies (`[1/3]`), tag inheritance and completion, recurring timestamps, clocking, capture and refile, footnotes and LaTeX in export, the Babel items listed above, and a Db2 for i route that does not need ODBC. Heading detection in the editing commands does not skip `*` lines inside src blocks (the agenda and export do). Table column widths count characters, so wide (CJK) text misaligns. Under `lem-vi-mode`, normal-state keys can shadow the keys above; use `M-x` or add normal-state bindings.
 
 ## Install
 

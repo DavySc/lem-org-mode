@@ -3,6 +3,7 @@
   :serial t
   :components ((:file "org-mode")
                (:file "agenda")
+               (:file "babel-model")
                (:file "export")
                (:file "babel")))
 

@@ -175,4 +175,33 @@
                    (smoke-text b)))
     (smoke-say "SKIP sh block: bash not found"))
 
+(if (ignore-errors (uiop:run-program '("python3" "--version") :output nil :error-output nil) t)
+    (progn
+      (smoke-check "python value, named table, header kept"
+                   (format nil "#+NAME: d~%| n | sq |~%|---+----|~%| 1 | 1 |~%| 2 | 4 |~%#+begin_src python :var rows=d~%return [[r[0], r[1] + 1] for r in rows]~%#+end_src~%~%#+RESULTS:~%| n | sq |~%|---+----|~%| 1 |  2 |~%| 2 |  5 |~%")
+                   (let ((b (smoke-buffer (format nil "#+NAME: d~%| n | sq |~%|---+----|~%| 1 | 1 |~%| 2 | 4 |~%#+begin_src python :var rows=d~%return [[r[0], r[1] + 1] for r in rows]~%#+end_src~%"))))
+                     (lem-org-mode:org-babel-execute (smoke-line b 7))
+                     (smoke-text b)))
+      (smoke-check "call line"
+                   (format nil "#+NAME: f~%#+begin_src python :var n=1~%return n * 2~%#+end_src~%#+CALL: f(n=21)~%~%#+RESULTS: f~%: 42~%")
+                   (let ((b (smoke-buffer (format nil "#+NAME: f~%#+begin_src python :var n=1~%return n * 2~%#+end_src~%#+CALL: f(n=21)~%"))))
+                     (lem-org-mode:org-babel-execute (smoke-line b 5))
+                     (smoke-text b))))
+    (smoke-say "SKIP python checks: python3 not found"))
+
+(smoke-check "src edit buffer round trip"
+             (format nil "* H~%  #+begin_src python~%  a = 1~%  ,* b~%  c = 2~%  #+end_src~%")
+             (let* ((b (smoke-buffer (format nil "* H~%  #+begin_src python~%  a = 1~%  * b~%  #+end_src~%")))
+                    (edit (lem-org-mode::src-edit-buffer b (smoke-line b 3))))
+               (lem:insert-string (lem:buffer-end-point edit) (format nil "~%c = 2"))
+               (lem-org-mode::src-edit-write-back edit)
+               (smoke-text b)))
+
+(smoke-check "tangle plan"
+             '("notes.py")
+             (mapcar (lambda (e) (getf e :file))
+                     (lem-org-mode::babel-tangle-plan
+                      (lem-org-mode::babel-scan (list "#+begin_src python :tangle yes" "print(1)" "#+end_src") '("TODO" "DONE"))
+                      "notes" "notes.org")))
+
 (smoke-say "DONE")
