@@ -118,3 +118,18 @@
   (let ((buffer (make-org-buffer (format nil "#+begin_src sql :engine postgres~%select 1;~%#+end_src~%"))))
     (ok (src-block-bounds (line-point buffer 2)))
     (ok (null (src-block-bounds (buffer-end-point buffer))) "no block after the end")))
+
+(deftest test-clocking
+  (let ((buffer (make-org-buffer (format nil "* TODO a~%SCHEDULED: <2026-10-22 Thu>~%body~%* b~%"))))
+    (org-clock-in (line-point buffer 1) '(2026 10 22 10 0))
+    (ok (string= (format nil "* TODO a~%SCHEDULED: <2026-10-22 Thu>~%:LOGBOOK:~%CLOCK: [2026-10-22 Thu 10:00]~%:END:~%body~%* b~%")
+                 (buffer-text buffer)))
+    (ok (= 90 (org-clock-out (line-point buffer 1) '(2026 10 22 11 30))))
+    (ok (string= "CLOCK: [2026-10-22 Thu 10:00]--[2026-10-22 Thu 11:30] =>  1:30" (line-string (line-point buffer 4))))
+    (org-clock-in (line-point buffer 1) '(2026 10 22 12 0))
+    (org-clock-in (line-point buffer 8) '(2026 10 22 12 30))
+    (ok (string= "CLOCK: [2026-10-22 Thu 12:00]--[2026-10-22 Thu 12:30] =>  0:30" (line-string (line-point buffer 4))))
+    (ok (string= ":LOGBOOK:" (line-string (line-point buffer 9))))
+    (org-clock-cancel (line-point buffer 1))
+    (ok (null (org-clock-running (buffer-point buffer))))
+    (ok (signals (org-clock-out (line-point buffer 1) '(2026 10 22 13 0)) 'editor-error))))
