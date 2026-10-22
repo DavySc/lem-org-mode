@@ -501,6 +501,25 @@ Return (values new-rows new-row new-column)."
 (define-meta-command org-meta-down :move-row-down (org-move-subtree (current-point) :down)
   "In a table move the row down, otherwise move the subtree down.")
 
+;;; Under lem-vi-mode the normal-state keymap outranks the mode keymap, and it binds Tab to a jump. Take Tab
+;;; over in that keymap; outside Org buffers it still does what vi does.
+
+(define-command org-vi-tab (&optional (n 1)) (:universal)
+  "In vi normal state: `org-cycle' in Org buffers, otherwise the vi jump that Tab normally does."
+  (if (eq (buffer-major-mode (current-buffer)) 'org-mode)
+      (org-cycle)
+      (call-command (find-symbol "VI-JUMP-NEXT" "LEM-VI-MODE/COMMANDS") n)))
+
+(defun install-vi-bindings (&rest arguments)
+  "Bind Tab in the vi normal-state keymap when lem-vi-mode is loaded. Safe to call again."
+  (declare (ignore arguments))
+  (let ((symbol (and (find-package "LEM-VI-MODE") (find-symbol "*NORMAL-KEYMAP*" "LEM-VI-MODE"))))
+    (when (and symbol (boundp symbol))
+      (define-key (symbol-value symbol) "Tab" 'org-vi-tab))))
+
+(install-vi-bindings)
+(add-hook *org-mode-hook* 'install-vi-bindings)
+
 (define-command org-promote-subtree () ()
   "Make the current heading and its subtree one level higher."
   (org-shift-subtree (current-point) -1))
