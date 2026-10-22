@@ -1078,11 +1078,26 @@ CHECKBOX is the character inside the brackets, or NIL."
 
 (defvar *org-sql-default-engine* "postgres")
 
+(defvar *org-sql-timeout* 60
+  "Seconds before a SQL command is given up on, unless the block has a :timeout header argument.")
+
 (defun sql-engine-kind (name)
   (cond ((member name '("postgres" "postgresql" "psql") :test #'string-equal) :psql)
         ((member name '("mssql" "sqlserver" "sqlcmd") :test #'string-equal) :sqlcmd)
         ((member name '("db2i" "ibmi" "odbc" "isql") :test #'string-equal) :isql)
         (t (editor-error "Unknown SQL engine ~A (use postgres, mssql or db2i)" name))))
+
+(defun sql-input (kind sql)
+  "The text to feed the client of engine KIND on stdin. sqlcmd runs nothing from a pipe without a final GO."
+  (ecase kind
+    (:psql sql)
+    (:sqlcmd (format nil "~A~%GO~%" sql))
+    (:isql (sql-statements-per-line sql))))
+
+(defun sql-timeout (args)
+  "The timeout in seconds for a block with header ARGS."
+  (let ((value (cdr (assoc "timeout" args :test #'string=))))
+    (or (and value (parse-integer value :junk-allowed t)) *org-sql-timeout*)))
 
 (defun sql-command (kind args)
   "Return (values argv parser) to run SQL of engine KIND with the header ARGS (an alist)."
@@ -1096,7 +1111,12 @@ CHECKBOX is the character inside the brackets, or NIL."
                        (and (arg "db") (list "-d" (arg "db"))))
                (lambda (output) (csv-parse output))))
       (:sqlcmd
-       (values (append (list "sqlcmd" "-W" "-s" "|")
+       ;; -b makes sqlcmd exit non-zero on a SQL error, otherwise the error text would be parsed as a
+       ;; result. -l and -t bound the login and the query, so an unreachable host cannot hang the editor.
+       (values (append (list "sqlcmd" "-b" "-W" "-s" "|"
+                             "-l" (princ-to-string (sql-timeout args))
+                             "-t" (princ-to-string (sql-timeout args)))
+                       (and (arg "trust-cert") (not (string-equal (arg "trust-cert") "no")) (list "-C"))
                        (and (arg "host") (list "-S" (if (arg "port")
                                                          (format nil "~A,~A" (arg "host") (arg "port"))
                                                          (arg "host"))))
@@ -1154,22 +1174,20 @@ CHECKBOX is the character inside the brackets, or NIL."
                 (return-from src-block-bounds nil)))
     (values begin end)))
 
-(defvar *org-sql-timeout* 60
-  "Seconds before a SQL command is given up on.")
-
 (defun run-sql (kind args sql)
   "Run SQL with the command for engine KIND and return the output rows."
   (multiple-value-bind (argv parser) (sql-command kind args)
     (multiple-value-bind (output error-output status)
         (handler-case
             (uiop:run-program argv
-                              :input (make-string-input-stream (if (eq kind :isql) (sql-statements-per-line sql) sql))
+                              :input (make-string-input-stream (sql-input kind sql))
                               :output :string :error-output :string :ignore-error-status t)
           (error (e) (editor-error "Cannot run ~A: ~A" (first argv) e)))
       (unless (zerop status)
         (editor-error "~A failed: ~A" (first argv)
-                      (let ((message (string-trim '(#\space #\newline #\return) (if (plusp (length error-output)) error-output output))))
-                        (subseq message 0 (position #\newline message)))))
+                      (let* ((message (string-trim '(#\space #\newline #\return) (if (plusp (length error-output)) error-output output)))
+                             (flat (substitute #\space #\newline (remove #\return message))))
+                        (subseq flat 0 (min 300 (length flat))))))
       (funcall parser output))))
 
 (defun org-babel-execute (point)

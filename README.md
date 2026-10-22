@@ -40,7 +40,7 @@ select id, name from customers;
 | `:engine` | Runs | Header arguments |
 |---|---|---|
 | `postgres` (default, `*org-sql-default-engine*`) | `psql --csv` | `:db :host :port :user`; password via `~/.pgpass` or `PGPASSWORD` |
-| `mssql` | `sqlcmd` | `:db :host :port`, `:user` and `:password`, or Windows authentication (`-E`) when no user |
+| `mssql` | `sqlcmd` | `:db :host :port`, `:user` and `:password`, or Windows authentication (`-E`) when no user. `:trust-cert yes` passes `-C` for servers with a self-signed certificate. `:timeout <seconds>` bounds login and query (default `*org-sql-timeout*`, 60); it is not a hard cap on an unreachable host, and Lem waits while `sqlcmd` runs |
 | `db2i` | `isql` (unixODBC) | `:db` is the ODBC data source name, optional `:user :password` |
 
 The client must be on `PATH`. Do not commit passwords in header arguments.

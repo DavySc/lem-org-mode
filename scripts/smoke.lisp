@@ -145,4 +145,26 @@
                (multiple-value-bind (begin end) (lem-org-mode:src-block-bounds (smoke-line b 2))
                  (list (lem:line-number-at-point begin) (lem:line-number-at-point end)))))
 
+(smoke-check "sqlcmd arguments"
+             (list t t t t)
+             (let ((argv (lem-org-mode::sql-command :sqlcmd '(("host" . "srv") ("port" . "1433")
+                                                               ("trust-cert" . "yes") ("timeout" . "7")))))
+               (list (and (member "-b" argv :test #'string=) t)
+                     (equal (subseq (member "-l" argv :test #'string=) 0 2) '("-l" "7"))
+                     (and (member "-C" argv :test #'string=) t)
+                     (and (member "srv,1433" argv :test #'string=) t))))
+
+;; Live SQL Server checks run only when LEM_ORG_SMOKE_MSSQL names a host (Windows authentication).
+(let ((host (uiop:getenv "LEM_ORG_SMOKE_MSSQL")))
+  (if (and host (plusp (length host)))
+      (let ((args (list (cons "host" host) (cons "trust-cert" "yes"))))
+        (smoke-check "mssql rows"
+                     '(("one" "two") ("1" "x"))
+                     (lem-org-mode::run-sql :sqlcmd args "select 1 as one, 'x' as two;"))
+        (smoke-check "mssql error is an editor-error"
+                     t
+                     (handler-case (progn (lem-org-mode::run-sql :sqlcmd args "select * from nope_nope;") nil)
+                       (lem:editor-error () t))))
+      (smoke-say "SKIP mssql checks (set LEM_ORG_SMOKE_MSSQL to a host)")))
+
 (smoke-say "DONE")
