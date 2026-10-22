@@ -133,7 +133,7 @@ The client must be on `PATH`. Do not commit passwords in header arguments.
 
 ## Not yet
 
-Statistics cookies (`[1/3]`), tag inheritance and completion, recurring timestamps, clocking, capture and refile, footnotes and LaTeX in export, the Babel items listed above, and a Db2 for i route that does not need ODBC. Heading detection in the editing commands does not skip `*` lines inside src blocks (the agenda and export do). Table column widths count characters, so wide (CJK) text misaligns. Under `lem-vi-mode`, normal-state keys can shadow the keys above; use `M-x` or add normal-state bindings.
+Statistics cookies (`[1/3]`), tag inheritance and completion, recurring timestamps, clocking, capture and refile, footnotes and LaTeX in export, the Babel items listed above, and a Db2 for i route that does not need ODBC. Heading detection in the editing commands does not skip `*` lines inside src blocks (the agenda and export do). Table column widths count characters, so wide (CJK) text misaligns. Under `lem-vi-mode`, `Tab` is taken over in normal state (Org buffers get `org-cycle`, others keep the vi jump) and all other keys above work in normal and insert state, except `Shift-Up` / `Shift-Down`, which insert state binds to page movement; use `M-x org-priority-up` there.
 
 ## Install
 

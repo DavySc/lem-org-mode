@@ -409,3 +409,12 @@
     (org-clock-cancel (line-point buffer 1))
     (ok (null (org-clock-running (buffer-point buffer))))
     (ok (signals (org-clock-out (line-point buffer 1) '(2026 10 22 13 0)) 'editor-error))))
+
+(deftest test-vi-tab
+  (let ((buffer (make-org-buffer (lines "|a|b" "|c|d"))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode:org-mode)
+    (move-to-line (current-point) 1)
+    (lem-org-mode::org-vi-tab)
+    (ok (string= (lines "| a | b |" "| c | d |") (text-of buffer)) "Tab in an Org buffer is org-cycle (a table cell move)")
+    (ok (fboundp 'lem-org-mode::install-vi-bindings))))
