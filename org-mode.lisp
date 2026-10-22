@@ -19,7 +19,19 @@
            :org-set-planning
            :org-set-property
            :org-babel-execute
-           :src-block-bounds))
+           :src-block-bounds
+           :*org-agenda-files*
+           :*org-agenda-span*
+           :*org-deadline-warning-days*
+           :*org-babel-languages*
+           :*org-sql-default-engine*
+           :*org-tags-column*
+           :org-agenda-week
+           :org-agenda-todo-list
+           :org-agenda-tags
+           :org-export-html
+           :org-export-markdown
+           :org-babel-tangle))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
@@ -108,6 +120,12 @@
 (define-key *org-mode-keymap* "C-c C-d" 'org-deadline)
 (define-key *org-mode-keymap* "C-c C-q" 'org-set-tags-command)
 (define-key *org-mode-keymap* "C-c C-x p" 'org-set-property-command)
+(define-key *org-mode-keymap* "C-c a a" 'org-agenda-week)
+(define-key *org-mode-keymap* "C-c a t" 'org-agenda-todo-list)
+(define-key *org-mode-keymap* "C-c a m" 'org-agenda-tags)
+(define-key *org-mode-keymap* "C-c C-e h" 'org-export-html)
+(define-key *org-mode-keymap* "C-c C-e m" 'org-export-markdown)
+(define-key *org-mode-keymap* "C-c C-v t" 'org-babel-tangle)
 
 (defun org-heading-level (point)
   "Return the number of stars if POINT's line is an Org heading, otherwise NIL."
@@ -897,7 +915,11 @@ CHECKBOX is the character inside the brackets, or NIL."
               (and planning (list planning))
               (list ":PROPERTIES:")
               (if index
-                  (append (subseq body 0 index) (list new) (nthcdr (1+ index) body))
+                  (append (subseq body 0 index)
+                          (list (let ((existing (string-left-trim " " (nth index body))))
+                                  (concatenate 'string (subseq existing 0 (length prefix))
+                                               (subseq new (length prefix)))))
+                          (nthcdr (1+ index) body))
                   (append body (list new)))
               (list ":END:")))))
 
@@ -1004,10 +1026,13 @@ CHECKBOX is the character inside the brackets, or NIL."
     (and (>= (length s) 9) (string-equal "#+end_src" s :end2 9))))
 
 (defun split-words (string)
-  (let ((words '()) (start nil))
+  "Split STRING at blanks. A double-quoted part stays in one word, quotes included."
+  (let ((words '()) (start nil) (quoted nil))
     (loop :for i :from 0 :to (length string)
-          :for blank := (or (= i (length string)) (member (char string i) '(#\space #\tab)))
-          :do (cond ((and blank start) (push (subseq string start i) words) (setf start nil))
+          :for c := (and (< i (length string)) (char string i))
+          :for blank := (or (null c) (and (not quoted) (member c '(#\space #\tab))))
+          :do (when (eql c #\") (setf quoted (not quoted)))
+              (cond ((and blank start) (push (subseq string start i) words) (setf start nil))
                     ((and (not blank) (not start)) (setf start i))))
     (nreverse words)))
 
@@ -1154,9 +1179,6 @@ CHECKBOX is the character inside the brackets, or NIL."
                 (return-from src-block-bounds nil)))
     (values begin end)))
 
-(defvar *org-sql-timeout* 60
-  "Seconds before a SQL command is given up on.")
-
 (defun run-sql (kind args sql)
   "Run SQL with the command for engine KIND and return the output rows."
   (multiple-value-bind (argv parser) (sql-command kind args)
@@ -1172,29 +1194,33 @@ CHECKBOX is the character inside the brackets, or NIL."
                         (subseq message 0 (position #\newline message)))))
       (funcall parser output))))
 
+(defun insert-results (end lines)
+  "Write the result LINES (starting with #+RESULTS:) under the #+end_src line at END, replacing an older result."
+  (let ((after (let ((p (copy-point end :temporary))) (and (line-offset p 1) p)))
+        (new (cons "" lines)))
+    (let ((old (if after (results-region-length (following-lines after)) 0)))
+      (if (plusp old)
+          (replace-lines after old new)
+          (progn (line-end end)
+                 (insert-string end (format nil "~%~{~A~^~%~}" new)))))))
+
 (defun org-babel-execute (point)
-  "Run the SQL source block around POINT and write the result table below it."
+  "Run the source block around POINT and write its result under it."
   (multiple-value-bind (begin end) (src-block-bounds point)
     (unless begin
       (editor-error "Not in a source block"))
     (multiple-value-bind (language args) (src-header (line-string begin))
-      (unless (and language (string-equal language "sql"))
-        (editor-error "Only sql blocks can be run (this one is ~A)" (or language "untyped")))
-      (let* ((sql (with-point ((body-start begin))
-                    (line-offset body-start 1)
-                    (if (point< body-start end) (points-to-string body-start (line-start (copy-point end :temporary))) "")))
-             (kind (sql-engine-kind (or (cdr (assoc "engine" args :test #'string=)) *org-sql-default-engine*)))
-             (rows (run-sql kind args sql))
-             (after (let ((p (copy-point end :temporary))) (and (line-offset p 1) p))))
-        (if after
-            (let* ((lines (following-lines after))
-                   (old (results-region-length lines)))
-              (if (plusp old)
-                  (replace-lines after old (cons "" (results-lines rows)))
-                  (progn (line-start end) (line-end end)
-                         (insert-string end (format nil "~%~{~A~^~%~}" (cons "" (results-lines rows)))))))
-            (progn (line-end end)
-                   (insert-string end (format nil "~%~{~A~^~%~}" (cons "" (results-lines rows))))))))))
+      (unless language
+        (editor-error "The source block has no language"))
+      (let* ((body (with-point ((body-start begin))
+                     (line-offset body-start 1)
+                     (if (point< body-start end)
+                         (points-to-string body-start (line-start (copy-point end :temporary)))
+                         "")))
+             (lines (babel-result-lines language args body)))
+        (if lines
+            (insert-results end lines)
+            (message "Done (results silenced)"))))))
 
 (define-command org-ctrl-c-ctrl-c () ()
   "Do the context-appropriate action: realign a table, toggle a checkbox, or run a source block."

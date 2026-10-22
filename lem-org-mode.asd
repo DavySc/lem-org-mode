@@ -1,7 +1,10 @@
 (defsystem "lem-org-mode"
   :depends-on ("lem/core")
   :serial t
-  :components ((:file "org-mode")))
+  :components ((:file "org-mode")
+               (:file "agenda")
+               (:file "export")
+               (:file "babel")))
 
 (defsystem "lem-org-mode/tests"
   :depends-on ("lem-org-mode" "rove")

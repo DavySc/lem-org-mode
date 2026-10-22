@@ -145,4 +145,34 @@
                (multiple-value-bind (begin end) (lem-org-mode:src-block-bounds (smoke-line b 2))
                  (list (lem:line-number-at-point begin) (lem:line-number-at-point end)))))
 
+(smoke-check "agenda entries from buffer text"
+             '("Write report" "Pay rent")
+             (let ((b (smoke-buffer (format nil "* TODO Write report~%SCHEDULED: <2026-10-22 Thu>~%* TODO Pay rent~%"))))
+               (mapcar (lambda (e) (getf e :title))
+                       (lem-org-mode::agenda-parse (lem-org-mode::split-text-lines (lem:buffer-text b))
+                                                   '("TODO" "DONE") "notes.org"))))
+
+(smoke-check "html export"
+             '(t t)
+             (let* ((b (smoke-buffer (format nil "#+TITLE: T~%* Head~%text *bold*~%")))
+                    (html (lem-org-mode::export-html (lem-org-mode::split-text-lines (lem:buffer-text b))
+                                                     '("TODO" "DONE"))))
+               (list (and (search "<h2>Head</h2>" html) t) (and (search "<b>bold</b>" html) t))))
+
+(smoke-check "markdown export"
+             (format nil "# T~%~%## Head~%~%text **bold**~%")
+             (let ((b (smoke-buffer (format nil "#+TITLE: T~%* Head~%text *bold*~%"))))
+               (lem-org-mode::export-markdown (lem-org-mode::split-text-lines (lem:buffer-text b))
+                                              '("TODO" "DONE"))))
+
+(if (ignore-errors (uiop:run-program '("bash" "--version") :output nil :error-output nil) t)
+    (smoke-check "sh block runs and a rerun replaces the result"
+                 (format nil "#+begin_src sh :var n=3~%echo hi $n~%#+end_src~%~%#+RESULTS:~%: hi 3~%")
+                 (let* ((b (smoke-buffer (format nil "#+begin_src sh :var n=3~%echo hi $n~%#+end_src~%")))
+                        (p (smoke-line b 2)))
+                   (lem-org-mode:org-babel-execute p)
+                   (lem-org-mode:org-babel-execute p)
+                   (smoke-text b)))
+    (smoke-say "SKIP sh block: bash not found"))
+
 (smoke-say "DONE")
