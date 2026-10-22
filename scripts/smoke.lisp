@@ -139,6 +139,22 @@
                (let ((line (lem:line-string (smoke-line b 1))))
                  (subseq line (- (length line) 6)))))
 
+(smoke-check "clock in, out, cancel"
+             (list (format nil "* a~%:LOGBOOK:~%CLOCK: [2026-10-22 Thu 10:00]~%:END:~%")
+                   90
+                   "CLOCK: [2026-10-22 Thu 10:00]--[2026-10-22 Thu 11:30] =>  1:30"
+                   (format nil "* a~%body"))
+             (let ((b (smoke-buffer (format nil "* a~%"))) (out '()))
+               (lem-org-mode:org-clock-in (smoke-line b 1) '(2026 10 22 10 0))
+               (push (smoke-text b) out)
+               (push (lem-org-mode:org-clock-out (smoke-line b 1) '(2026 10 22 11 30)) out)
+               (push (lem:line-string (smoke-line b 3)) out)
+               (let ((c (smoke-buffer (format nil "* a~%body"))))
+                 (lem-org-mode:org-clock-in (smoke-line c 1) '(2026 10 22 10 0))
+                 (lem-org-mode:org-clock-cancel (smoke-line c 1))
+                 (push (smoke-text c) out))
+               (nreverse out)))
+
 (smoke-check "src block bounds"
              (list 1 3)
              (let ((b (smoke-buffer (format nil "#+begin_src sql~%select 1;~%#+end_src~%"))))

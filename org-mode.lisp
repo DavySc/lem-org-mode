@@ -18,6 +18,9 @@
            :org-set-tags
            :org-set-planning
            :org-set-property
+           :org-clock-in
+           :org-clock-out
+           :org-clock-cancel
            :org-babel-execute
            :src-block-bounds))
 (in-package :lem-org-mode)
@@ -108,6 +111,9 @@
 (define-key *org-mode-keymap* "C-c C-d" 'org-deadline)
 (define-key *org-mode-keymap* "C-c C-q" 'org-set-tags-command)
 (define-key *org-mode-keymap* "C-c C-x p" 'org-set-property-command)
+(define-key *org-mode-keymap* "C-c C-x C-i" 'org-clock-in-command)
+(define-key *org-mode-keymap* "C-c C-x C-o" 'org-clock-out-command)
+(define-key *org-mode-keymap* "C-c C-x C-q" 'org-clock-cancel-command)
 
 (defun org-heading-level (point)
   "Return the number of stars if POINT's line is an Org heading, otherwise NIL."
@@ -182,7 +188,8 @@ END is the start of the next heading of the same or a higher level, or the end o
 (define-command org-todo () ()
   "Cycle the todo keyword of the current heading."
   (org-cycle-todo (current-point))
-  (org-todo-update-closed (current-point)))
+  (org-todo-update-closed (current-point))
+  (org-clock-stop-for-done (current-point)))
 
 (defun subtree-headings (start end)
   "Return (line-offset . level) for every heading line in [START, END), offsets counted from START."
@@ -984,6 +991,175 @@ CHECKBOX is the character inside the brackets, or NIL."
   "Set a property in the :PROPERTIES: drawer of the current entry."
   (let ((name (prompt-for-string "Property: ")))
     (org-set-property (current-point) name (prompt-for-string (format nil "~A value: " name)))))
+
+;;; Clocking
+;;;
+;;;   * TODO write
+;;;   :LOGBOOK:
+;;;   CLOCK: [2026-10-22 Thu 10:00]--[2026-10-22 Thu 11:30] =>  1:30
+;;;   :END:
+;;;
+;;; The drawer follows the planning line and the :PROPERTIES: drawer. Only one clock runs at a time:
+;;; clocking in elsewhere first clocks out the running one. A time is a list (year month day hour minute).
+
+;;; BEGIN pure clock code
+
+(defun format-clock-stamp (time)
+  (destructuring-bind (year month day hour minute) time
+    (format nil "[~4,'0D-~2,'0D-~2,'0D ~A ~2,'0D:~2,'0D]"
+            year month day (timestamp-day-name year month day) hour minute)))
+
+(defun parse-clock-stamp (line &optional (start 0))
+  "Return the time of the first [YYYY-MM-DD Day HH:MM] in LINE from START, or NIL."
+  (let ((open (position #\[ line :start start)))
+    (when (and open (>= (length line) (+ open 22)) (char= (char line (+ open 21)) #\]))
+      (let ((numbers (list (parse-integer line :start (+ open 1) :end (+ open 5) :junk-allowed t)
+                           (parse-integer line :start (+ open 6) :end (+ open 8) :junk-allowed t)
+                           (parse-integer line :start (+ open 9) :end (+ open 11) :junk-allowed t)
+                           (parse-integer line :start (+ open 16) :end (+ open 18) :junk-allowed t)
+                           (parse-integer line :start (+ open 19) :end (+ open 21) :junk-allowed t))))
+        (and (every #'integerp numbers) numbers)))))
+
+(defun clock-minutes-between (from to)
+  "Whole minutes from the time FROM to the time TO, never negative."
+  (flet ((universal (time)
+           (destructuring-bind (year month day hour minute) time
+             (encode-universal-time 0 minute hour day month year 0))))
+    (max 0 (round (- (universal to) (universal from)) 60))))
+
+(defun format-clock-duration (minutes)
+  (format nil "~2D:~2,'0D" (floor minutes 60) (mod minutes 60)))
+
+(defun clock-line-p (line)
+  (let ((s (string-left-trim " 	" line)))
+    (and (>= (length s) 8) (string= "CLOCK: [" s :end2 8))))
+
+(defun clock-open-p (line)
+  "True for a CLOCK line that has been started and not yet stopped."
+  (and (clock-line-p line) (not (search "--" line)) (parse-clock-stamp line)))
+
+(defun clock-close-line (line end)
+  "Return (values line minutes) for the open CLOCK LINE stopped at the time END."
+  (let ((minutes (clock-minutes-between (parse-clock-stamp line) end)))
+    (values (format nil "~A--~A => ~A" (string-right-trim " " line) (format-clock-stamp end)
+                    (format-clock-duration minutes))
+            minutes)))
+
+(defun logbook-length (lines)
+  "How many of LINES, which follow an entry's head, form its :LOGBOOK: drawer (0 when it has none)."
+  (if (and lines (string-equal (string-trim " 	" (first lines)) ":LOGBOOK:"))
+      (let ((end (position-if (lambda (line) (string-equal (string-trim " 	" line) ":END:")) lines :start 1)))
+        (if end (1+ end) 0))
+      0))
+
+(defun logbook-clock-in (logbook time)
+  "LOGBOOK (the drawer's lines, or NIL) with a new running clock on top."
+  (let ((clock (format nil "CLOCK: ~A" (format-clock-stamp time))))
+    (if logbook
+        (list* (first logbook) clock (rest logbook))
+        (list ":LOGBOOK:" clock ":END:"))))
+
+(defun logbook-clock-out (logbook time)
+  "Return (values logbook minutes) with the running clock of LOGBOOK stopped at TIME."
+  (let ((index (position-if #'clock-open-p logbook)))
+    (unless index (editor-error "No running clock"))
+    (multiple-value-bind (line minutes) (clock-close-line (nth index logbook) time)
+      (values (append (subseq logbook 0 index) (list line) (nthcdr (1+ index) logbook))
+              minutes))))
+
+(defun logbook-clock-cancel (logbook)
+  "LOGBOOK without its running clock; NIL when nothing else is left in the drawer."
+  (let* ((index (position-if #'clock-open-p logbook))
+         (rest (and index (append (subseq logbook 0 index) (nthcdr (1+ index) logbook)))))
+    (unless index (editor-error "No running clock"))
+    (if (= (length rest) 2) nil rest)))
+
+;;; END pure clock code
+
+(defun now ()
+  (multiple-value-bind (s minute hour day month year) (decode-universal-time (get-universal-time))
+    (declare (ignore s))
+    (list year month day hour minute)))
+
+(defun replace-line-span (heading offset count new-lines)
+  "Replace the COUNT lines that start OFFSET lines below HEADING by NEW-LINES, inserting or deleting lines as needed."
+  (with-point ((start heading))
+    (let ((found (line-offset start offset)))
+      (cond ((and (zerop count) (null new-lines)))
+            ((zerop count)
+             (if found
+                 (insert-string (line-start start) (format nil "~{~A~%~}" new-lines))
+                 (insert-string (buffer-end start) (format nil "~%~{~A~^~%~}" new-lines))))
+            ((null new-lines)
+             (with-point ((end start))
+               (if (line-offset end count)
+                   (delete-between-points (line-start start) (line-start end))
+                   (progn (character-offset start -1)
+                          (delete-between-points start (buffer-end end))))))
+            (t (replace-lines (line-start start) count new-lines))))))
+
+(defun org-edit-logbook (point function)
+  "Replace the :LOGBOOK: drawer of the entry at POINT by (FUNCTION lines), where LINES is NIL without a drawer.
+Return the second value of FUNCTION."
+  (let* ((heading (heading-point point))
+         (lines (let ((all (following-lines heading)))
+                  (subseq all 0 (or (position-if #'org-heading-string-p all :start 1) (length all)))))
+         (offset (head-length lines))
+         (count (logbook-length (nthcdr offset lines))))
+    (multiple-value-bind (new extra) (funcall function (subseq lines offset (+ offset count)))
+      (replace-line-span heading offset count new)
+      extra)))
+
+(defun org-clock-running (point)
+  "A point on the running CLOCK line in the buffer of POINT, or NIL."
+  (with-point ((p (buffer-start-point (point-buffer point))))
+    (loop
+      (when (clock-open-p (line-string p))
+        (return (copy-point p :temporary)))
+      (unless (line-offset p 1)
+        (return nil)))))
+
+(defun org-clock-out (point time)
+  "Stop the running clock of POINT's buffer at TIME. Return the minutes it ran."
+  (let ((running (org-clock-running point)))
+    (unless running (editor-error "No running clock"))
+    (org-edit-logbook running (lambda (logbook) (logbook-clock-out logbook time)))))
+
+(defun org-clock-in (point time)
+  "Start a clock on the entry at POINT, first stopping the running one."
+  (when (org-clock-running point)
+    (org-clock-out point time))
+  (org-edit-logbook point (lambda (logbook) (logbook-clock-in logbook time))))
+
+(defun org-clock-cancel (point)
+  "Remove the running clock of POINT's buffer without recording it."
+  (let ((running (org-clock-running point)))
+    (unless running (editor-error "No running clock"))
+    (org-edit-logbook running #'logbook-clock-cancel)))
+
+(defun org-clock-stop-for-done (point)
+  "Stop the running clock when it belongs to the entry at POINT and that entry is now in its last todo state."
+  (let ((running (org-clock-running point))
+        (heading (enclosing-heading point)))
+    (when (and running heading
+               (point= heading (enclosing-heading running))
+               (equal (nth-value 1 (heading-split (line-string heading) *org-todo-keywords*))
+                      (car (last *org-todo-keywords*))))
+      (org-clock-out point (now)))))
+
+(define-command org-clock-in-command () ()
+  "Start a clock on the current entry. A running clock elsewhere is stopped."
+  (org-clock-in (current-point) (now))
+  (message "Clock started"))
+
+(define-command org-clock-out-command () ()
+  "Stop the running clock and show how long it ran."
+  (message "Clocked out: ~A" (string-left-trim " " (format-clock-duration (org-clock-out (current-point) (now))))))
+
+(define-command org-clock-cancel-command () ()
+  "Cancel the running clock without recording it."
+  (org-clock-cancel (current-point))
+  (message "Clock canceled"))
 
 ;;; Babel: run SQL source blocks
 ;;;

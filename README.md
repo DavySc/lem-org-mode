@@ -24,6 +24,11 @@ A small Org mode for the [Lem](https://github.com/lem-project/lem) editor. Work 
 | `C-c C-q` | `org-set-tags-command` | set tags (`work:home`), right-aligned at column 77 (`*org-tags-column*`) |
 | `C-c C-s` / `C-c C-d` | `org-schedule` / `org-deadline` | `SCHEDULED:` / `DEADLINE:` line; enter `2026-11-03`, `+3d`, `+1w` or nothing for today |
 | `C-c C-x p` | `org-set-property-command` | set a property in the `:PROPERTIES:` drawer |
+| `C-c C-x C-i` | `org-clock-in-command` | start a clock on the entry: adds `CLOCK: [date time]` to its `:LOGBOOK:` drawer; stops a clock running elsewhere |
+| `C-c C-x C-o` | `org-clock-out-command` | stop the running clock, write `--[end] =>  1:30` and show the duration |
+| `C-c C-x C-q` | `org-clock-cancel-command` | drop the running clock without recording it |
+
+Marking an entry DONE with `C-c C-t` also stops its running clock.
 
 Numeric table columns are right-aligned. Customise the TODO keywords with `lem-org-mode:*org-todo-keywords*` (default `("TODO" "DONE")`).
 
