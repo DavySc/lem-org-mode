@@ -83,4 +83,22 @@
                (push (smoke-text b) out)
                (nreverse out)))
 
+(smoke-check "table align"
+             (format nil "| a   | bb |~%| ccc | d  |~%")
+             (let ((b (smoke-buffer (format nil "|a|bb~%|ccc|d|~%"))))
+               (lem-org-mode:org-table-edit (smoke-line b 1) :align)
+               (smoke-text b)))
+
+(smoke-check "table next cell and move row"
+             (list 1 8 (format nil "| ccc |   | d  |~%| a   |   | bb |~%") 2)
+             (let* ((b (smoke-buffer (format nil "|a|bb~%|ccc|d|~%")))
+                    (p (smoke-line b 1)))
+               (lem-org-mode:org-table-edit p :align)
+               (setf (lem:point-charpos p) 2)
+               (lem-org-mode:org-table-edit p :next-cell)
+               (let ((line (lem:line-number-at-point p)) (col (lem:point-charpos p)))
+                 (lem-org-mode:org-table-edit p :insert-column)
+                 (lem-org-mode:org-table-edit p :move-row-down)
+                 (list line col (smoke-text b) (lem:line-number-at-point p)))))
+
 (smoke-say "DONE")

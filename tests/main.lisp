@@ -63,3 +63,26 @@
       (ok (string= (format nil "* A~%a~%* B~%b") (buffer-text buffer)))
       (ok (= 1 (line-number-at-point point))))
     (ok (signals (org-move-subtree (line-point buffer 3) :down) 'editor-error))))
+
+(deftest test-table-format
+  (ok (equal (org-table-format-rows (list '("Name" "Qty") :rule '("apple" "3") '("kiwi" "12.5")))
+             (list "| Name  |  Qty |"
+                   "|-------+------|"
+                   "| apple |    3 |"
+                   "| kiwi  | 12.5 |"))))
+
+(deftest test-table-edit
+  (let ((buffer (make-org-buffer (format nil "|a|bb~%|ccc|d|~%"))))
+    (let ((point (line-point buffer 1)))
+      (org-table-edit point :align)
+      (ok (string= (format nil "| a   | bb |~%| ccc | d  |~%") (buffer-text buffer)))
+      (setf (point-charpos point) 2)
+      (org-table-edit point :next-cell)
+      (ok (= 1 (line-number-at-point point)))
+      (ok (= 8 (point-charpos point)))
+      (org-table-edit point :insert-column)
+      (ok (string= (format nil "| a   |   | bb |~%| ccc |   | d  |~%") (buffer-text buffer)))
+      (org-table-edit point :move-row-down)
+      (ok (string= (format nil "| ccc |   | d  |~%| a   |   | bb |~%") (buffer-text buffer)))
+      (ok (= 2 (line-number-at-point point))))
+    (ok (signals (org-table-edit (line-point buffer 1) :previous-cell) 'editor-error))))
