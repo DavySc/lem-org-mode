@@ -767,7 +767,7 @@ are configured."
 
 (defun show-agenda (title records &optional spec)
   (let ((buffer (agenda-buffer title records spec)))
-    (switch-to-buffer buffer)
+    (org-switch-to-buffer buffer)
     (buffer-start (current-point))
     buffer))
 
@@ -915,13 +915,13 @@ are configured."
   "Jump to the entry on the current agenda line."
   (let ((entry (agenda-entry-at-point)))
     (unless entry (editor-error "No entry on this line"))
-    (switch-to-buffer (agenda-entry-buffer entry))
+    (org-switch-to-buffer (agenda-entry-buffer entry))
     (move-to-line (current-point) (getf entry :line))))
 
 (define-command org-agenda-quit () ()
   "Leave the agenda buffer."
   (let ((agenda (current-buffer)))
-    (switch-to-buffer (or (find-if-not (lambda (buffer) (eq buffer agenda)) (buffer-list)) agenda))
+    (org-switch-to-buffer (or (find-if-not (lambda (buffer) (eq buffer agenda)) (buffer-list)) agenda))
     (delete-buffer agenda)))
 
 (define-command org-agenda-redo () ()

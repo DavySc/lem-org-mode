@@ -681,7 +681,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
         (view (or (get-buffer "*Org Babel Expanded*") (make-buffer "*Org Babel Expanded*"))))
     (erase-buffer view)
     (insert-string (buffer-point view) text)
-    (switch-to-buffer view)))
+    (org-switch-to-buffer view)))
 
 ;;; Tangle
 
@@ -736,7 +736,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
   "Edit the body of the source block at point in a separate buffer in the language's own mode.
 Finish with C-c ' (write back) or C-c C-k (discard)."
   (let ((edit (src-edit-buffer (current-buffer) (current-point))))
-    (switch-to-buffer edit)
+    (org-switch-to-buffer edit)
     (org-src-edit-mode t)
     (buffer-start (current-point))))
 
@@ -765,12 +765,12 @@ Finish with C-c ' (write back) or C-c C-k (discard)."
   "Write the edited text back into the source block and return to the Org buffer."
   (let* ((edit (current-buffer))
          (origin (src-edit-write-back edit)))
-    (switch-to-buffer origin)
+    (org-switch-to-buffer origin)
     (delete-buffer edit)))
 
 (define-command org-edit-src-abort () ()
   "Discard the edit buffer and return to the Org buffer."
   (let* ((edit (current-buffer))
          (origin (first (src-edit-origin edit))))
-    (switch-to-buffer origin)
+    (org-switch-to-buffer origin)
     (delete-buffer edit)))

@@ -8,6 +8,9 @@
   (declare (ignore timeout))
   (push value *messages*))
 
+;;; Without a window `switch-to-buffer' has nothing to switch; make the buffer current instead.
+(setf lem-org-mode::*org-switch-function* (lambda (buffer) (setf (lem:current-buffer) buffer)))
+
 (defun make-org-buffer (text)
   (let ((buffer (make-buffer nil :temporary t)))
     (insert-string (buffer-point buffer) text)

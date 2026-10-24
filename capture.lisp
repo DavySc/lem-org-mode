@@ -471,7 +471,7 @@ PREPEND. Return (values new-lines index)."
             (insert-string (buffer-point buffer) text)
             (change-buffer-mode buffer 'org-mode)
             (setf (buffer-value buffer 'capture-template) template)
-            (switch-to-buffer buffer)
+            (org-switch-to-buffer buffer)
             (org-capture-mode t)
             (buffer-start (current-point))
             (when cursor (character-offset (current-point) cursor)))))))
@@ -488,7 +488,7 @@ PREPEND. Return (values new-lines index)."
     (multiple-value-bind (buffer line) (org-capture-finish-text template text)
       (delete-buffer capture)
       (when (capture-option template :jump-to-captured)
-        (switch-to-buffer buffer)
+        (org-switch-to-buffer buffer)
         (move-to-line (current-point) line))
       (message "Captured"))))
 
@@ -581,7 +581,7 @@ source and target are the same buffer the target line is adjusted for the remova
 (define-command org-refile-goto () ()
   "Jump to a refile target."
   (let ((target (prompt-for-refile-target)))
-    (switch-to-buffer (agenda-entry-buffer target))
+    (org-switch-to-buffer (agenda-entry-buffer target))
     (move-to-line (current-point) (getf target :line))))
 
 (define-key *org-mode-keymap* "C-c c" 'org-capture)

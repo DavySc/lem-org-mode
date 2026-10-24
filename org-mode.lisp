@@ -217,7 +217,24 @@
            :org-capture-refile
            :org-refile-command
            :org-refile-copy
-           :org-refile-goto))
+           :org-refile-goto
+           :*org-file-apps*
+           :*org-footnote-section*
+           :*org-id-link-to-org-use-id*
+           :*org-id-locations*
+           :*org-link-abbrev-alist*
+           :*org-link-shell-confirm*
+           :*org-stored-links*
+           :*org-url-open-function*
+           :org-footnote-action-command
+           :org-id-get-create-command
+           :org-id-update-id-locations-command
+           :org-insert-link
+           :org-next-link
+           :org-open-at-point-command
+           :org-previous-link
+           :org-store-link-command
+           :*org-switch-function*))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
@@ -262,6 +279,12 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
   `(let ((*org-todo-config* (buffer-todo-sequences (point-buffer ,point))))
      ,@body))
 
+(defvar *org-switch-function* 'switch-to-buffer
+  "The function that shows a buffer in the current window. Tests that run without a window replace it.")
+
+(defun org-switch-to-buffer (buffer)
+  (funcall *org-switch-function* buffer))
+
 (defun heading-attribute (level)
   (case level
     (1 'document-header1-attribute)
@@ -289,6 +312,12 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
               (make-tm-match "^[ \\t]*(?:[-+]|\\d+[.)])[ \\t]+(?:\\[[ X-]\\][ \\t]+)?"
                              :name 'document-list-attribute)
               (make-tm-match "\\[\\[[^]]+\\](?:\\[[^]]+\\])?\\]" :name 'document-link-attribute)
+              (make-tm-match "(?:https?|ftp|mailto|file):[^\\s<>\\]\"]+" :name 'document-link-attribute)
+              (make-tm-match "^[ \\t]*(?:SCHEDULED|DEADLINE|CLOSED|CLOCK):" :name 'syntax-keyword-attribute)
+              (make-tm-match "[<\\[][0-9]{4}-[0-9]{2}-[0-9]{2}(?: [^\\]>]*)?[>\\]]" :name 'syntax-string-attribute)
+              (make-tm-match "^[ \\t]*:[A-Za-z_][A-Za-z0-9_-]*:(?: .*)?$" :name 'syntax-builtin-attribute)
+              (make-tm-match "\\[fn:[^]]*\\]" :name 'syntax-variable-attribute)
+              (make-tm-match "<<<?[^<>]+>>>?" :name 'syntax-variable-attribute)
               (make-tm-match "(?<![\\w*])\\*[^*\\s](?:[^*]*[^*\\s])?\\*(?![\\w*])"
                              :name 'document-bold-attribute)
               (make-tm-match "(?<![\\w/])/[^/\\s](?:[^/]*[^/\\s])?/(?![\\w/])"
