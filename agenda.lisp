@@ -670,12 +670,12 @@ Months and years start on their first day."
                            (agenda-visible-entries entries filter)))))
 
 (defun entry-descendants (entries entry)
-  "The entries in the subtree of ENTRY (same source), excluding ENTRY."
-  (remove-if-not (lambda (other)
-                   (and (equal (getf other :source) (getf entry :source))
-                        (> (getf other :line) (getf entry :line))
-                        (< (getf other :line) (getf entry :subtree-end))))
-                 entries))
+  "The entries in the subtree of ENTRY, excluding ENTRY. ENTRIES is in file order, so they follow it directly."
+  (let ((tail (member entry entries :test #'eq)))
+    (loop :for other :in (cdr tail)
+          :while (and (equal (getf other :source) (getf entry :source))
+                      (< (getf other :line) (getf entry :subtree-end)))
+          :collect other)))
 
 (defun agenda-stuck-records (entries &optional (setting *org-stuck-projects*) (today 0))
   "Projects (by the matcher in SETTING) that have no next action under them."

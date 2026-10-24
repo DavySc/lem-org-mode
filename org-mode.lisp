@@ -1799,7 +1799,7 @@ Return the second value of FUNCTION."
       (funcall parser output))))
 
 (define-command org-ctrl-c-ctrl-c () ()
-  "Do the context-appropriate action: run a source block or #+CALL:, realign a table, or toggle a checkbox."
+  "Do the context-appropriate action: run a source block or #+CALL:, recompute or realign a table, update a dynamic block or CLOCK line, toggle a checkbox, or set the tags of a heading."
   (let ((point (current-point)))
     (cond ((or (src-block-bounds point) (org-call-line-p point)) (org-babel-execute point))
           ((table-point-above-tblfm point) (org-table-recalculate (table-point-above-tblfm point)))
@@ -1809,6 +1809,7 @@ Return the second value of FUNCTION."
           ((clock-line-p (line-string point)) (org-clock-update-line point))
           ((org-table-at-point-p point) (org-table-edit point :align))
           ((org-item-at-point-p point) (org-toggle-checkbox point))
+          ((org-heading-level point) (org-set-tags-command))
           (t (editor-error "Nothing to do here")))))
 
 (define-file-type ("org") org-mode)
