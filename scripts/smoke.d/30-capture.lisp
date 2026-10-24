@@ -1,7 +1,7 @@
 (in-package :cl-user)
 
 (smoke-check "capture expand"
-             (list "* TODO <2026-10-22 Thu> " 7)
+             (list "* TODO <2026-10-22 Thu> " 24)
              (multiple-value-bind (text cursor)
                  (lem-org-mode::capture-expand "* TODO %t %?" (list :time '(2026 10 22 9 0 0)))
                (list text cursor)))
