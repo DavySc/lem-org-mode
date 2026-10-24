@@ -22,6 +22,12 @@
 (defvar *babel-sessions* (make-hash-table :test 'equal)
   "For :session, the programs already run in each session, replayed before the next block.")
 
+(defvar *org-babel-session-timeout* 60
+  "Seconds a block of a live :session may take before the session is killed.")
+
+(defvar *babel-processes* (make-hash-table :test 'equal)
+  "The live interpreters of :session blocks, by (buffer-name family session).")
+
 (defvar *babel-header* nil
   "Column names stripped from the first table that a block takes as a variable; put back on a table result.")
 
@@ -48,10 +54,25 @@
     (("cpp" "c++") :extension "cpp" :family :cpp :compile ("g++" "%f" "-o" "%o") :argv ("%o"))
     (("go") :extension "go" :family :go :argv ("go" "run"))
     (("java") :extension "java" :family :java :argv ("java"))
-    (("haskell" "hs") :extension "hs" :family :haskell :argv ("runghc")))
+    (("haskell" "hs") :extension "hs" :family :haskell :argv ("runghc"))
+    (("rust" "rs") :extension "rs" :family :rust :compile ("rustc" "%f" "-o" "%o") :argv ("%o"))
+    (("typescript" "ts") :extension "ts" :family :typescript :argv ("ts-node"))
+    (("awk") :extension "awk" :family :awk :argv ("awk" "-f"))
+    (("julia") :extension "jl" :family :julia :argv ("julia"))
+    (("octave" "matlab") :extension "m" :family :octave :argv ("octave" "--no-gui" "-q"))
+    (("scheme" "guile") :extension "scm" :family :scheme :argv ("guile"))
+    (("ocaml") :extension "ml" :family :ocaml :argv ("ocaml"))
+    (("fortran") :extension "f90" :family :fortran :compile ("gfortran" "%f" "-o" "%o") :argv ("%o"))
+    (("tcl") :extension "tcl" :family :tcl :argv ("tclsh"))
+    (("dot" "graphviz") :extension "dot" :family :dot :graphics t :argv ("dot" "-T%T" "-o" "%F" "%f"))
+    (("gnuplot") :extension "gp" :family :gnuplot :graphics t :argv ("gnuplot")
+     :prelude (format nil "set terminal %T~%set output \"%F\"~%"))
+    (("mermaid") :extension "mmd" :family :mermaid :graphics t :argv ("mmdc" "-i" "%f" "-o" "%F")))
   "Languages that `org-babel-execute' can run (SQL has its own engines). Each entry is
-(names :extension EXT :family FAMILY :argv ARGV [:compile ARGV]). The file with the code is appended to ARGV
-unless ARGV contains %f; %o stands for the compiled program. FAMILY decides how :var values are written and
+(names :extension EXT :family FAMILY :argv ARGV [:compile ARGV] [:graphics T] [:prelude TEXT]). The file with the code is
+appended to ARGV unless ARGV contains %f; %o stands for the compiled program, %F for the output file named by :file
+and %T for its type (the extension). A :graphics language writes the :file named by the block, so its result is a
+file link; :prelude is put in front of the code with %F and %T filled in. FAMILY decides how :var values are written and
 whether :results value works (python js ruby perl php lua r powershell lisp). Edit this to change an
 interpreter, for example python on Windows.")
 
@@ -59,14 +80,15 @@ interpreter, for example python on Windows.")
   (find-if (lambda (spec) (member name (car spec) :test #'string-equal)) specs))
 
 (defun babel-wrap-main (family body)
-  "C and C++ blocks without a main function get includes and a main around them, as in Org."
-  (if (or (not (member family '(:c :cpp))) (search "main" body))
+  "C, C++ and Rust blocks without a main function get includes and a main around them, as in Org."
+  (if (or (not (member family '(:c :cpp :rust))) (search "main" body))
       body
+      (if (eq family :rust) (format nil "fn main() {~%~A~%}~%" body)
       (format nil "~A~%int main() {~%~A~%return 0;~%}~%"
               (if (eq family :c)
                   (format nil "#include <stdio.h>~%#include <stdlib.h>~%#include <string.h>~%#include <math.h>")
                   (format nil "#include <iostream>~%#include <string>~%#include <vector>~%#include <cmath>~%using namespace std;"))
-              body)))
+              body))))
 
 (defun babel-element-value (lines args)
   "The value of the table, list or fixed-width text in LINES (as found after a #+RESULTS: line)."
@@ -109,14 +131,34 @@ interpreter, for example python on Windows.")
 
 ;;; BEGIN pure process code
 
-(defun substitute-placeholders (argv file exe)
-  (mapcar (lambda (word)
-            (cond ((string= word "%f") file) ((string= word "%o") exe) (t word)))
-          argv))
+(defun substitute-placeholders (argv file exe &optional output type)
+  "ARGV with %f replaced by FILE, %o by EXE, %F by OUTPUT and %T by TYPE (also inside a longer word, as in -T%T)."
+  (flet ((replace-all (word target value)
+           (if (and value (search target word))
+               (with-output-to-string (out)
+                 (loop :with start := 0
+                       :for at := (search target word :start2 start)
+                       :do (write-string word out :start start :end (or at (length word)))
+                       :while at :do (write-string value out) (setf start (+ at (length target)))))
+               word)))
+    (mapcar (lambda (word)
+              (cond ((string= word "%f") file) ((string= word "%o") exe)
+                    (t (replace-all (replace-all word "%F" output) "%T" type))))
+            argv)))
 
 (defun last-line-of (text)
   (let ((lines (remove-if #'blank-string-p (split-text-lines text))))
     (if lines (string-trim " " (car (last lines))) "")))
+
+(defvar *babel-directory* nil
+  "The directory of the buffer being evaluated: where relative :dir, :file and cross-file references start.")
+
+(defun babel-directory (dir)
+  "The directory to run in: DIR (a :dir header argument) resolved against `*babel-directory*', or that directory."
+  (let ((dir (and dir (literal-var-value dir))))
+    (cond ((and dir *babel-directory*) (merge-pathnames (uiop:ensure-directory-pathname dir) *babel-directory*))
+          (dir (uiop:ensure-directory-pathname dir))
+          (*babel-directory* (uiop:ensure-directory-pathname *babel-directory*)))))
 
 (defun babel-run (spec program args)
   "Write PROGRAM to a temporary file, compile and run it as SPEC says, and return its standard output."
@@ -127,7 +169,10 @@ interpreter, for example python on Windows.")
          (exe (uiop:native-namestring (if (uiop:os-windows-p) (make-pathname :type "exe" :defaults base) base)))
          (argv (getf (cdr spec) :argv))
          (compile (getf (cdr spec) :compile))
-         (directory (header-arg args "dir"))
+         (directory (babel-directory (header-arg args "dir")))
+         (output (let ((f (header-arg args "file")))
+                   (and f (uiop:native-namestring (merge-pathnames (literal-var-value f) (or directory ""))))))
+         (type (let ((f (header-arg args "file"))) (and f (pathname-type (literal-var-value f)))))
          (cmdline (split-words (or (header-arg args "cmdline") ""))))
     (flet ((run (command &key directory)
              (handler-case
@@ -143,11 +188,13 @@ interpreter, for example python on Windows.")
                  (unless (zerop status)
                    (editor-error "~A failed: ~A" (first compile)
                                  (last-line-of (if (plusp (length error-output)) error-output output))))))
+             (when (and output (getf (cdr spec) :graphics))
+               (ensure-directories-exist output))
              (multiple-value-bind (output error-output status)
-                 (run (append (substitute-placeholders argv file exe)
+                 (run (append (substitute-placeholders argv file exe output type)
                               (unless (or compile (member "%f" argv :test #'string=)) (list file))
                               cmdline)
-                      :directory (and directory (uiop:ensure-directory-pathname directory)))
+                      :directory directory)
                (unless (zerop status)
                  (editor-error "~A failed: ~A" (first argv)
                                (last-line-of (if (plusp (length error-output)) error-output output))))
@@ -180,7 +227,7 @@ interpreter, for example python on Windows.")
                        (prog1 (cons "var" (format nil "~A=~A" (or (nth index declared) (editor-error "Too many arguments")) argument))
                          (incf index))))))
 
-(defun babel-resolve (records text args)
+(defun babel-resolve-name (records text args)
   "The value of the :var reference TEXT, as (values value found-p)."
   (let* ((open (position #\( text))
          (name (string-trim " " (subseq text 0 open)))
@@ -202,6 +249,42 @@ interpreter, for example python on Windows.")
                                    :overrides (and open (babel-positional-overrides record (nth-value 1 (call-parse text))))))
                  t))))))
 
+(defvar *babel-file-cache* (make-hash-table :test 'equal)
+  "For each Org file referenced from another, (write-date records lines).")
+
+(defun babel-file-data (file)
+  "Return (values records lines) of the Org FILE, read relative to `*babel-directory*' and cached by write date."
+  (let ((path (merge-pathnames (expand-user-path file) (or *babel-directory* ""))))
+    (unless (probe-file path) (editor-error "No such file: ~A" file))
+    (let ((cached (gethash (namestring path) *babel-file-cache*)))
+      (if (and cached (eql (first cached) (file-write-date path)))
+          (values (second cached) (third cached))
+          (let* ((lines (uiop:read-file-lines path))
+                 (records (babel-scan lines (org-keywords))))
+            (setf (gethash (namestring path) *babel-file-cache*) (list (file-write-date path) records lines))
+            (values records lines))))))
+
+(defun babel-resolve (records text args)
+  "The value of the :var reference TEXT (name, name[index], file.org:name or a call), as (values value found-p)."
+  (multiple-value-bind (file reference) (reference-file-split text)
+    (if file
+        (multiple-value-bind (other-records other-lines) (babel-file-data file)
+          (let ((*babel-lines* other-lines))
+            (babel-resolve other-records reference args)))
+        (multiple-value-bind (name index) (reference-parse text)
+          (multiple-value-bind (value found) (babel-resolve-name records name args)
+            (values (if (and found index) (value-index value index) value) found))))))
+
+(defun babel-record-args (record overrides)
+  "The header arguments with which RECORD runs: its own, OVERRIDES on top, and the output file worked out
+from :file, :file-ext and :output-dir. A block that writes a file returns a file link."
+  (let* ((args (header-args-merge (getf record :args) overrides))
+         (hash (babel-hash (format nil "~{~A~^~%~}~A" (getf record :body) (getf record :language))))
+         (file (babel-output-file args (getf record :name) hash)))
+    (if file
+        (header-args-merge args (list (cons "file" file) (cons "results" "file")))
+        args)))
+
 (defun babel-bindings (records args)
   (babel-var-values args (lambda (text) (babel-resolve records text args))))
 
@@ -220,14 +303,14 @@ interpreter, for example python on Windows.")
 (defun babel-prepare (records record overrides &optional extra-bindings)
   "Work out what running RECORD means. Return a plist: :args :language :body :bindings and, for languages run
 through a file, :spec :family :program :value-wrapped, or :sql when it is an SQL block."
-  (let* ((args (header-args-merge (getf record :args) overrides))
+  (let* ((args (babel-record-args record overrides))
          (language (or (getf record :language) (editor-error "The source block has no language")))
          (resolvable (remove-if (lambda (entry) (and (string= (car entry) "var")
                                                      (assoc (var-name (cdr entry)) extra-bindings :test #'string=)))
                                 args))
          (bindings (append (babel-bindings records resolvable) extra-bindings))
          (body (babel-noweb-text records args (format nil "~{~A~^~%~}" (getf record :body)))))
-    (if (string-equal language "sql")
+    (if (member language '("sql" "sqlite") :test #'string-equal)
         (list :args args :language language :body (substitute-vars body bindings) :bindings bindings :sql t)
         (let* ((spec (or (babel-language-spec language *org-babel-languages*)
                          (editor-error "No interpreter for ~A (see *org-babel-languages*)" language)))
@@ -235,16 +318,28 @@ through a file, :spec :family :program :value-wrapped, or :sql when it is an SQL
                (session (let ((s (header-arg args "session"))) (and s (not (string-equal s "none")) s)))
                (tokens (babel-results-tokens args))
                (value-mode (not (member "output" tokens :test #'string-equal))))
+          (let ((prelude (getf (cdr spec) :prelude))
+                (file (header-arg args "file")))
+            (when prelude
+              (unless file (editor-error "~A needs a :file header argument" language))
+              (setf body (concatenate 'string
+                                      (substitute-placeholders (list prelude) "" "" (literal-var-value file)
+                                                               (or (pathname-type (literal-var-value file)) "png"))
+                                      body))))
           (when (and bindings (not (babel-family-vars-p family)))
             (editor-error "Variables (:var) are not supported for ~A" language))
           (when (and session (not (babel-family-vars-p family)))
             (editor-error ":session is not supported for ~A" language))
-          (let ((before (and session (gethash (list (buffer-name (current-buffer)) language session) *babel-sessions*))))
+          (let* ((live (and session (assoc family *babel-session-servers*)))
+                 (before (and session (not live)
+                              (gethash (list (buffer-name (current-buffer)) language session) *babel-sessions*))))
             (multiple-value-bind (program wrapped)
                 (babel-program family args (babel-wrap-main family body)
-                               :bindings bindings :value value-mode :session-before before)
+                               :bindings bindings :session-before before :session (and live t)
+                               :value (and value-mode (not live)))
               (list :args args :language language :body body :bindings bindings :spec spec :family family
-                    :program program :value-wrapped wrapped :session session
+                    :program program :value-wrapped (if live (and value-mode (getf (cdr live) :value) t) wrapped)
+                    :session session :live (and live t)
                     :plain-program (babel-program family args body :bindings bindings))))))))
 
 (defun babel-evaluate (records record &key overrides existing-hash extra-bindings)
@@ -263,21 +358,27 @@ When :cache yes and the hash equals EXISTING-HASH nothing is run and the value i
       ((and (header-flag-p args "cache") existing-hash (string= hash existing-hash))
        (values :cached hash))
       ((getf plan :sql)
-       (let* ((rows (run-sql (sql-engine-kind (or (header-arg args "engine") *org-sql-default-engine*))
+       (let* ((rows (run-sql (sql-engine-kind (or (header-arg args "engine")
+                                                  (and (string-equal (getf plan :language) "sqlite") "sqlite")
+                                                  *org-sql-default-engine*))
                              args (getf plan :body))))
          (values (if (cdr rows) (list* (first rows) :rule (rest rows)) rows) hash *babel-header*)))
       (t
-       (let* ((stdout (babel-run (getf plan :spec) (getf plan :program) args))
+       (let* ((live (getf plan :live))
+              (stdout (if live
+                          (babel-session-eval plan args)
+                          (babel-run (getf plan :spec) (getf plan :program) args)))
               (session (getf plan :session)))
          (multiple-value-bind (output value-text)
-             (babel-split-output stdout :session (and session t) :value (getf plan :value-wrapped))
-           (when session
+             (babel-split-output stdout :session (and session (not live) t) :value (getf plan :value-wrapped))
+           (when (and session (not live))
              (push-session (list (buffer-name (current-buffer)) (getf plan :language) session)
                            (getf plan :plain-program)))
            (values (if (getf plan :value-wrapped)
-                       (if value-text
-                           (destructuring-bind (true false null) (json-keywords (getf plan :family))
-                             (json-parse value-text :true true :false false :null null))
+                       (if (or value-text (getf plan :live))
+                           (when value-text
+                            (destructuring-bind (true false null) (json-keywords (getf plan :family))
+                             (json-parse value-text :true true :false false :null null)))
                            (editor-error "The block returned no value (python and js blocks need `return')"))
                        (string-right-trim '(#\newline #\return) output))
                    hash *babel-header*)))))))
@@ -285,9 +386,84 @@ When :cache yes and the hash equals EXISTING-HASH nothing is run and the value i
 (defun push-session (key program)
   (setf (gethash key *babel-sessions*) (append (gethash key *babel-sessions*) (list program))))
 
+;;; Live sessions
+
+(defun babel-session-kill (process)
+  (ignore-errors (uiop:terminate-process process))
+  (ignore-errors (uiop:close-streams process)))
+
+(defun babel-session-start (spec family directory)
+  "Start the interpreter of FAMILY with its session server."
+  (let* ((server (cdr (assoc family *babel-session-servers*)))
+         (argv (append (list (first (getf (cdr spec) :argv)))
+                       (getf server :flags)
+                       (list (babel-replace-text (getf server :script) "%V" *babel-value-marker*)))))
+    (handler-case (uiop:launch-program argv :input :stream :output :stream :error-output :output
+                                            :external-format :utf-8 :directory directory)
+      (error (e) (editor-error "Cannot run ~A: ~A" (first argv) e)))))
+
+(defun babel-session-read (process marker key)
+  "Read the output of PROCESS up to the line MARKER. Kill the session on timeout or when the interpreter exits."
+  (let* ((output (uiop:process-info-output process))
+         (text (make-array 256 :element-type 'character :adjustable t :fill-pointer 0))
+         (end (format nil "~A~%" marker))
+         (deadline (+ (get-internal-real-time) (* *org-babel-session-timeout* internal-time-units-per-second))))
+    (loop
+      (let ((char (read-char-no-hang output nil :eof)))
+        (cond ((eq char :eof)
+               (babel-session-kill process)
+               (remhash key *babel-processes*)
+               (editor-error "The ~(~A~) session ended~@[: ~A~]" (second key)
+                             (let ((last (last-line-of text))) (and (plusp (length last)) last))))
+              (char
+               (vector-push-extend char text)
+               (let ((n (length text)) (m (length end)))
+                 (when (and (>= n m) (char= char #\newline) (string= end text :start2 (- n m)))
+                   (return (babel-session-output text marker)))))
+              ((> (get-internal-real-time) deadline)
+               (babel-session-kill process)
+               (remhash key *babel-processes*)
+               (editor-error "The ~(~A~) session did not answer in ~D seconds and was killed"
+                             (second key) *org-babel-session-timeout*))
+              (t (sleep 0.002)))))))
+
+(defun babel-session-eval (plan args)
+  "Send the program of PLAN to its live session, starting it if needed, and return what the block printed."
+  (let* ((family (getf plan :family))
+         (key (list (buffer-name (current-buffer)) family (getf plan :session)))
+         (process (let ((old (gethash key *babel-processes*)))
+                    (if (and old (uiop:process-alive-p old))
+                        old
+                        (setf (gethash key *babel-processes*)
+                              (babel-session-start (getf plan :spec) family (babel-directory (header-arg args "dir")))))))
+         (file (uiop:native-namestring
+                (make-pathname :type (getf (cdr (getf plan :spec)) :extension)
+                               :defaults (merge-pathnames (format nil "org-babel-session-~D-~D" (get-universal-time) (random 100000))
+                                                          (uiop:temporary-directory)))))
+         (marker (format nil "ORG-BABEL-END-~D-~D" (get-universal-time) (random 1000000))))
+    (unwind-protect
+         (progn
+           (with-open-file (out file :direction :output :if-exists :supersede :external-format :utf-8)
+             (write-string (getf plan :program) out))
+           (handler-case
+               (let ((input (uiop:process-info-input process)))
+                 (write-string (babel-session-request (if (getf plan :value-wrapped) "value" "output") file marker) input)
+                 (finish-output input))
+             (error () (remhash key *babel-processes*)
+               (editor-error "The ~(~A~) session has ended" family)))
+           (babel-session-read process marker key))
+      (ignore-errors (delete-file file)))))
+
+(defun babel-sessions-kill-all ()
+  (maphash (lambda (key process) (declare (ignore key)) (babel-session-kill process)) *babel-processes*)
+  (clrhash *babel-processes*))
+
+(pushnew 'babel-sessions-kill-all sb-ext:*exit-hooks*)
+
 (define-command org-babel-reset-sessions () ()
-  "Forget the programs that :session blocks replay."
+  "Forget the programs that :session blocks replay and kill the live session interpreters."
   (clrhash *babel-sessions*)
+  (babel-sessions-kill-all)
   (message "Babel sessions reset"))
 
 ;;; Writing results
@@ -326,13 +502,48 @@ When :cache yes and the hash equals EXISTING-HASH nothing is run and the value i
     (babel-apply-edit buffer edit)
     (and edit t)))
 
+
+;;; Library of Babel: named blocks that every file can call or read as :var
+
+(defvar *org-babel-library-files* '()
+  "Org files whose named source blocks form the Library of Babel, for #+CALL: and :var in every buffer.")
+
+(defvar *babel-library-ingested* '()
+  "Named source blocks added with `org-babel-lob-ingest'.")
+
+(defun named-source-records (records)
+  (remove-if-not (lambda (r) (and (eq (getf r :kind) :src) (getf r :name))) records))
+
+(defun babel-library-sync ()
+  "Rebuild `*babel-library-records*' from the ingested blocks and `*org-babel-library-files*'."
+  (setf *babel-library-records*
+        (append *babel-library-ingested*
+                (loop :for file :in *org-babel-library-files*
+                      :append (handler-case (named-source-records (let ((*babel-directory* nil)) (babel-file-data file)))
+                                (editor-error () nil))))))
+
+(define-command org-babel-lob-ingest () ()
+  "Add the named source blocks of this buffer to the Library of Babel."
+  (let ((records (named-source-records (babel-scan (buffer-lines (current-buffer)) (org-keywords)))))
+    (dolist (record records)
+      (setf *babel-library-ingested*
+            (cons record (remove (getf record :name) *babel-library-ingested*
+                                 :key (lambda (r) (getf r :name)) :test #'equal))))
+    (message "Ingested ~D block~:P" (length records))))
+
+(define-command org-babel-lob-clear () ()
+  "Forget the blocks ingested into the Library of Babel."
+  (setf *babel-library-ingested* '())
+  (message "Library of Babel cleared"))
+
 ;;; Executing blocks and calls
 
 (defun babel-run-record (buffer records record &key overrides (end (getf record :end)) (name (getf record :name)))
   "Run the block RECORD and write its result into BUFFER under the line at the 0-based index END,
 titled NAME. A #+CALL: passes its own line and the name of the block it calls. Return the value."
   (let* ((*babel-lines* (buffer-lines buffer))
-         (args (header-args-merge (getf record :args) overrides))
+         (*babel-directory* (buffer-directory buffer))
+         (args (babel-record-args record overrides))
          (after (nthcdr (1+ end) *babel-lines*))
          (existing-hash (nth-value 2 (results-extent after name))))
     (multiple-value-bind (value hash header) (babel-evaluate records record :overrides overrides :existing-hash existing-hash)
@@ -367,10 +578,16 @@ titled NAME. A #+CALL: passes its own line and the name of the block it calls. R
                                                :extra-bindings (list (cons this-name value))))))))
 
 (defun babel-record-at-point (buffer point)
-  "Return (values records record) for the block or call on POINT's line."
-  (let* ((records (babel-scan (buffer-lines buffer) *org-todo-keywords*))
-         (line (1- (line-number-at-point point))))
-    (values records (or (babel-block-at records line) (babel-call-at records line)))))
+  "Return (values records record) for the block, call or inline element on POINT's line."
+  (babel-library-sync)
+  (let* ((records (babel-scan (buffer-lines buffer) (org-keywords)))
+         (line (1- (line-number-at-point point)))
+         (column (point-charpos point)))
+    (values records (or (babel-block-at records line) (babel-call-at records line)
+                        (find-if (lambda (r) (and (member (getf r :kind) '(:inline-src :inline-call))
+                                                  (= (getf r :begin) line)
+                                                  (<= (getf r :col) column (getf r :col-end))))
+                                 records)))))
 
 (defun babel-call-record (records call)
   "Return (values target overrides) for the #+CALL: element CALL."
@@ -385,13 +602,32 @@ titled NAME. A #+CALL: passes its own line and the name of the block it calls. R
 (defun org-call-line-p (point)
   (line-starts-with-ci-p (line-string point) "#+call:"))
 
+(defun babel-run-inline (buffer records element)
+  "Run the inline source block or call ELEMENT and put {{{results(...)}}} after it. Return the value."
+  (let* ((*babel-lines* (buffer-lines buffer))
+         (*babel-directory* (buffer-directory buffer))
+         (value (if (eq (getf element :kind) :inline-src)
+                    (babel-evaluate records element)
+                    (multiple-value-bind (target overrides) (babel-call-record records element)
+                      (babel-evaluate records target :overrides overrides))))
+         (silent (member "silent" (babel-results-tokens (getf element :args)) :test #'string-equal))
+         (number (1+ (getf element :begin))))
+    (if silent
+        (message "Done: ~A" (inline-result-text value))
+        (let ((old (line-string (line-point buffer number))))
+          (replace-lines (line-point buffer number) 1
+                         (list (inline-replace-result old (getf element :col-end) value)))))
+    value))
+
 (defun babel-run-element (buffer records element)
-  "Run a source block, or the block that a #+CALL: line names, and write the result."
-  (if (eq (getf element :kind) :call)
-      (multiple-value-bind (target overrides) (babel-call-record records element)
-        (babel-run-record buffer records target :overrides overrides
-                                                :end (getf element :end) :name (getf target :name)))
-      (babel-run-record buffer records element)))
+  "Run a source block, inline element or the block that a #+CALL: line names, and write the result."
+  (case (getf element :kind)
+    (:call
+     (multiple-value-bind (target overrides) (babel-call-record records element)
+       (babel-run-record buffer records target :overrides overrides
+                                               :end (getf element :end) :name (getf target :name))))
+    ((:inline-src :inline-call) (babel-run-inline buffer records element))
+    (t (babel-run-record buffer records element))))
 
 (defun org-babel-execute (point)
   "Run the source block or #+CALL: line around POINT and write the result under it."
@@ -408,9 +644,10 @@ titled NAME. A #+CALL: passes its own line and the name of the block it calls. R
 (defun execute-range (buffer start-line end-line-function)
   "Run every block and call in BUFFER whose begin line lies between START-LINE and (funcall END-LINE-FUNCTION),
 top to bottom, rereading the buffer after each since results move later lines. Return the number run."
+  (babel-library-sync)
   (let ((count 0))
     (loop :for k :from 0
-          :do (let* ((records (babel-scan (buffer-lines buffer) *org-todo-keywords*))
+          :do (let* ((records (babel-scan (buffer-lines buffer) (org-keywords)))
                      (limit (funcall end-line-function))
                      (targets (remove-if-not (lambda (r) (and (member (getf r :kind) '(:src :call))
                                                               (<= start-line (getf r :begin))
@@ -448,7 +685,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
 
 (defun babel-blocks (buffer)
   (remove-if-not (lambda (r) (eq (getf r :kind) :src))
-                 (babel-scan (buffer-lines buffer) *org-todo-keywords*)))
+                 (babel-scan (buffer-lines buffer) (org-keywords))))
 
 (define-command org-babel-next-src-block () ()
   "Move to the next source block."
@@ -467,7 +704,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
 (define-command org-babel-goto-named-src-block () ()
   "Move to the block, table, list or result called NAME."
   (let* ((name (prompt-for-string "Name: "))
-         (record (babel-find-named (babel-scan (buffer-lines (current-buffer)) *org-todo-keywords*) name)))
+         (record (babel-find-named (babel-scan (buffer-lines (current-buffer)) (org-keywords)) name)))
     (unless record (editor-error "Nothing is called ~A" name))
     (move-to-line (current-point) (1+ (getf record :begin)))))
 
@@ -479,6 +716,36 @@ top to bottom, rereading the buffer after each since results move later lines. R
       (unless record (editor-error "Not in a source block"))
       (unless (babel-remove-result buffer (getf record :end) (getf record :name))
         (editor-error "This block has no result")))))
+
+(define-command org-babel-demarcate-block () ()
+  "Split the source block at point in two at the current line; outside a block insert an empty one."
+  (let ((point (current-point)))
+    (multiple-value-bind (begin end) (src-block-bounds point)
+      (cond
+        ((and begin (point< begin (line-start (copy-point point :temporary)))
+              (point< (line-start (copy-point point :temporary)) end))
+         (let* ((header (line-string begin))
+                (indent (make-string (line-indent header) :initial-element #\space)))
+           (line-start point)
+           (insert-string point (format nil "~A#+end_src~%~%~A~%" indent (string-left-trim " " header)))
+           (line-offset point -1)
+           (line-start point)))
+        (t
+         (let ((indent (make-string (line-indent (line-string point)) :initial-element #\space)))
+           (line-start point)
+           (insert-string point (format nil "~A#+begin_src ~%~A~%~A#+end_src~%" indent indent indent))
+           (line-offset point -3)
+           (line-end point)))))))
+
+(define-command org-babel-open-src-block-result () ()
+  "Move to the #+RESULTS: line of the source block at point."
+  (multiple-value-bind (records record) (babel-record-at-point (current-buffer) (current-point))
+    (declare (ignore records))
+    (unless record (editor-error "Not in a source block"))
+    (multiple-value-bind (offset) (results-extent (nthcdr (1+ (getf record :end)) (buffer-lines (current-buffer)))
+                                                  (getf record :name))
+      (unless offset (editor-error "This block has no result"))
+      (move-to-line (current-point) (+ (getf record :end) 2 offset)))))
 
 (define-command org-babel-info () ()
   "Show the language and the header arguments in effect for the source block at point."
@@ -503,7 +770,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
         (view (or (get-buffer "*Org Babel Expanded*") (make-buffer "*Org Babel Expanded*"))))
     (erase-buffer view)
     (insert-string (buffer-point view) text)
-    (switch-to-buffer view)))
+    (org-switch-to-buffer view)))
 
 ;;; Tangle
 
@@ -511,7 +778,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
   "Write the source blocks that have a :tangle argument to their files, next to the buffer."
   (let* ((buffer (current-buffer))
          (file (buffer-filename buffer))
-         (plan (babel-tangle-plan (babel-scan (buffer-lines buffer) *org-todo-keywords*)
+         (plan (babel-tangle-plan (babel-scan (buffer-lines buffer) (org-keywords))
                                   (if file (pathname-name file) (buffer-name buffer))
                                   (if file (file-namestring file) (buffer-name buffer)))))
     (unless plan
@@ -558,7 +825,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
   "Edit the body of the source block at point in a separate buffer in the language's own mode.
 Finish with C-c ' (write back) or C-c C-k (discard)."
   (let ((edit (src-edit-buffer (current-buffer) (current-point))))
-    (switch-to-buffer edit)
+    (org-switch-to-buffer edit)
     (org-src-edit-mode t)
     (buffer-start (current-point))))
 
@@ -570,7 +837,7 @@ Finish with C-c ' (write back) or C-c C-k (discard)."
   "Copy the text of the edit buffer EDIT into the source block it came from. Return the Org buffer."
   (destructuring-bind (origin begin language indent) (src-edit-origin edit)
     (let* ((body (trim-trailing-blank-lines (split-text-lines (buffer-text edit))))
-           (records (babel-scan (buffer-lines origin) *org-todo-keywords*))
+           (records (babel-scan (buffer-lines origin) (org-keywords)))
            (record (find-if (lambda (r) (and (eq (getf r :kind) :src) (= (getf r :begin) begin))) records)))
       (unless (and record (equal (getf record :language) language))
         (editor-error "The source block moved or changed; copy your text and edit the block again"))
@@ -587,12 +854,12 @@ Finish with C-c ' (write back) or C-c C-k (discard)."
   "Write the edited text back into the source block and return to the Org buffer."
   (let* ((edit (current-buffer))
          (origin (src-edit-write-back edit)))
-    (switch-to-buffer origin)
+    (org-switch-to-buffer origin)
     (delete-buffer edit)))
 
 (define-command org-edit-src-abort () ()
   "Discard the edit buffer and return to the Org buffer."
   (let* ((edit (current-buffer))
          (origin (first (src-edit-origin edit))))
-    (switch-to-buffer origin)
+    (org-switch-to-buffer origin)
     (delete-buffer edit)))

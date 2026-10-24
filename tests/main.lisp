@@ -8,6 +8,9 @@
   (declare (ignore timeout))
   (push value *messages*))
 
+;;; Without a window `switch-to-buffer' has nothing to switch; make the buffer current instead.
+(setf lem-org-mode::*org-switch-function* (lambda (buffer) (setf (lem:current-buffer) buffer)))
+
 (defun make-org-buffer (text)
   (let ((buffer (make-buffer nil :temporary t)))
     (insert-string (buffer-point buffer) text)
@@ -128,7 +131,7 @@
 (deftest test-export
   (let ((html (lem-org-mode::export-html (list "* Head" "text") '("TODO" "DONE")))
         (md (lem-org-mode::export-markdown (list "* Head" "text") '("TODO" "DONE"))))
-    (ok (search "<h2>Head</h2>" html))
+    (ok (search "Head</h2>" html))
     (ok (string= (format nil "# Head~%~%text~%") md))))
 
 (deftest test-agenda-parse
@@ -229,12 +232,12 @@
 
 (deftest test-babel-session
   (with-program ("python3" "--version")
-    (clrhash lem-org-mode::*babel-sessions*)
+    (lem-org-mode::babel-sessions-kill-all)
     (let ((buffer (make-org-buffer
                    (lines "#+begin_src python :session s :results output" "x = 5" "#+end_src"
                           "#+begin_src python :session s :results output" "print(x + 1)" "#+end_src"))))
       (run-at buffer 2)
-      (run-at buffer 5)
+      (run-at buffer 7)
       (ok (search (lines "#+RESULTS:" ": 6") (text-of buffer)) "the second block sees the first block's variable"))))
 
 (deftest test-babel-noweb

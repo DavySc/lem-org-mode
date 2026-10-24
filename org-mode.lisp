@@ -8,6 +8,15 @@
            :org-heading-level
            :org-subtree-bounds
            :org-cycle-todo
+           :org-todo-change
+           :org-todo-step
+           :org-add-note
+           :org-update-cookies
+           :org-update-all-cookies
+           :*org-log-done*
+           :*org-log-into-drawer*
+           :*org-log-repeat*
+           :*org-todo-repeat-to-state*
            :org-shift-subtree
            :org-move-subtree
            :org-table-format-rows
@@ -45,16 +54,303 @@
            :org-babel-remove-result
            :org-babel-expand-src-block
            :org-babel-info
+           :org-babel-demarcate-block
+           :org-babel-open-src-block-result
+           :org-babel-lob-ingest
+           :org-babel-lob-clear
+           :*org-babel-library-files*
            :org-babel-reset-sessions
            :org-edit-src-block
            :org-edit-src-exit
            :org-edit-src-abort
            :*org-babel-default-header-args*
-           :*org-babel-confirm-evaluate*))
+           :org-capture-string
+           :export-html
+           :export-markdown
+           :export-ascii
+           :export-latex
+           :export-org
+           :export-icalendar
+           :org-publish-project
+           :org-publish-all-projects
+           :org-refile
+           :org-archive-subtree
+           :org-copy-subtree
+           :org-cut-subtree
+           :org-paste-subtree
+           :org-toggle-archive-tag
+           :org-sort-entries
+           :org-entry-get
+           :org-entry-delete
+           :org-timestamp-change
+           :org-set-effort
+           :*org-babel-confirm-evaluate*
+           :*org-agenda-custom-commands*
+           :*org-agenda-grid-times*
+           :*org-agenda-skip-done*
+           :*org-agenda-start-on-weekday*
+           :*org-agenda-use-time-grid*
+           :*org-babel-comment-prefixes*
+           :*org-babel-default-inline-header-args*
+           :*org-priority-default*
+           :*org-priority-highest*
+           :*org-priority-lowest*
+           :*org-sql-timeout*
+           :*org-stuck-projects*
+           :*org-syntax-table*
+           :*org-tags-exclude-from-inheritance*
+           :*org-todo-config*
+           :org-add-note-command
+           :org-agenda
+           :org-agenda-add-note
+           :org-agenda-clock-in
+           :org-agenda-clock-out
+           :org-agenda-day
+           :org-agenda-day-view
+           :org-agenda-deadline
+           :org-agenda-earlier
+           :org-agenda-file-to-front
+           :org-agenda-filter
+           :org-agenda-filter-clear
+           :org-agenda-fortnight-view
+           :org-agenda-goto
+           :org-agenda-goto-today
+           :org-agenda-later
+           :org-agenda-list-stuck-projects
+           :org-agenda-log-mode
+           :org-agenda-month-view
+           :org-agenda-next-item
+           :org-agenda-previous-item
+           :org-agenda-priority-down
+           :org-agenda-priority-up
+           :org-agenda-quit
+           :org-agenda-redo
+           :org-agenda-save-buffers
+           :org-agenda-schedule
+           :org-agenda-search
+           :org-agenda-set-effort
+           :org-agenda-set-tags
+           :org-agenda-tags-todo
+           :org-agenda-todo
+           :org-agenda-todo-keyword
+           :org-agenda-week-view
+           :org-agenda-year-view
+           :org-clock-cancel-command
+           :org-clock-in-command
+           :org-clock-out-command
+           :org-ctrl-c-ctrl-c
+           :org-cycle
+           :org-deadline
+           :org-demote-subtree
+           :org-insert-heading
+           :org-insert-todo-heading
+           :org-meta-down
+           :org-meta-left
+           :org-meta-return
+           :org-meta-right
+           :org-meta-up
+           :org-move-subtree-down
+           :org-move-subtree-up
+           :org-priority
+           :org-priority-down
+           :org-priority-up
+           :org-promote-subtree
+           :org-remove-file
+           :org-schedule
+           :org-set-effort-command
+           :org-set-property-command
+           :org-set-tags-command
+           :org-table-align
+           :org-table-delete-column
+           :org-table-delete-row
+           :org-table-insert-column
+           :org-table-insert-hline
+           :org-table-insert-row
+           :org-table-previous-cell
+           :org-todo
+           :org-todo-previous
+           :org-todo-select
+           :org-toggle-checkbox-command
+           :org-update-statistics-cookies
+           :org-vi-tab
+           :*org-archive-location*
+           :*org-enforce-todo-dependencies*
+           :*org-subtree-clipboard*
+           :org-archive-subtree-command
+           :org-archive-to-archive-sibling
+           :org-backward-heading-same-level
+           :org-check-deadlines
+           :org-content
+           :org-copy-subtree-command
+           :org-cut-subtree-command
+           :org-delete-property-command
+           :org-evaluate-time-range
+           :org-forward-heading-same-level
+           :org-global-cycle
+           :org-goto
+           :org-hide-subtree
+           :org-insert-subheading
+           :org-next-visible-heading
+           :org-occur
+           :org-overview
+           :org-paste-subtree-command
+           :org-previous-visible-heading
+           :org-reset-checkbox-state-subtree
+           :org-shift-down
+           :org-shift-left
+           :org-shift-right
+           :org-shift-tab
+           :org-shift-up
+           :org-show-all
+           :org-show-subtree
+           :org-show-todo-tree
+           :org-sort
+           :org-sparse-tree
+           :org-tags-sparse-tree
+           :org-time-stamp
+           :org-time-stamp-inactive
+           :org-toggle-archive-tag-command
+           :org-toggle-heading
+           :org-toggle-ordered-property
+           :outline-up-heading
+           :*org-capture-templates*
+           :*org-default-notes-file*
+           :*org-last-stored-link*
+           :*org-refile-targets*
+           :*org-reverse-note-order*
+           :*org-user-name*
+           :org-capture
+           :org-capture-finalize
+           :org-capture-kill
+           :org-capture-refile
+           :org-refile-command
+           :org-refile-copy
+           :org-refile-goto
+           :*org-file-apps*
+           :*org-footnote-section*
+           :*org-id-link-to-org-use-id*
+           :*org-id-locations*
+           :*org-link-abbrev-alist*
+           :*org-link-shell-confirm*
+           :*org-stored-links*
+           :*org-url-open-function*
+           :org-footnote-action-command
+           :org-id-get-create-command
+           :org-id-update-id-locations-command
+           :org-insert-link
+           :org-next-link
+           :org-open-at-point-command
+           :org-previous-link
+           :org-store-link-command
+           :*org-switch-function*
+           :*org-dblock-writers*
+           :org-clock-goto
+           :org-clock-report
+           :org-ctrl-c-star
+           :org-dblock-update-command
+           :org-table-convert-region
+           :org-table-eval-formula
+           :org-table-export-command
+           :org-table-import
+           :org-table-recalculate-buffer-command
+           :org-table-recalculate-command
+           :org-table-sum
+           :org-update-all-dblocks-command
+           :*org-structure-template-alist*
+           :*org-timer-paused*
+           :*org-timer-start*
+           :org-ctrl-c-dash
+           :org-cycle-list-bullet
+           :org-insert-drawer
+           :org-insert-structure-template-command
+           :org-return
+           :org-shift-meta-down
+           :org-shift-meta-left
+           :org-shift-meta-right
+           :org-shift-meta-up
+           :org-timer
+           :org-timer-item
+           :org-timer-pause-or-continue
+           :org-timer-start
+           :org-timer-stop
+           :org-toggle-comment
+           :*org-ascii-text-width*
+           :*org-export-creator*
+           :*org-export-exclude-tags*
+           :*org-export-headline-levels*
+           :*org-export-html-head*
+           :*org-export-mathjax*
+           :*org-export-reader*
+           :*org-export-select-tags*
+           :*org-export-with-section-numbers*
+           :*org-export-with-toc*
+           :*org-icalendar-include-todo*
+           :*org-latex-class*
+           :*org-latex-packages*
+           :org-export-ascii
+           :org-export-dispatch
+           :org-export-html-subtree
+           :org-export-latex
+           :org-export-org
+           :org-icalendar-combine-agenda-files
+           :org-icalendar-export-to-ics
+           :*org-publish-project-alist*
+           :*org-publish-timestamp-directory*
+           :org-publish
+           :org-publish-all
+           :org-publish-current-file
+           :org-publish-current-project
+           :*org-babel-session-timeout*
+           :*org-keyword-syntax-tables*))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
-  "Keywords that `org-todo' cycles through. The first one starts a task and the last one finishes it.")
+  "The TODO keywords. A list of strings is one sequence, finished by the last keyword or by those after a \"|\":
+(\"TODO\" \"NEXT\" \"|\" \"DONE\" \"CANCELED\"). A list of lists gives several sequences. A keyword may carry a key
+and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override this for that buffer.")
+
+(defvar *org-todo-config* nil
+  "When non-NIL, the keyword sequences in effect (bound by commands that work on a buffer other than the current one).")
+
+(defun initial-todo-keywords ()
+  "The keywords of `*org-todo-keywords*' as a flat list (used while this file loads, before tasks-model.lisp)."
+  (labels ((flat (x) (cond ((stringp x) (list x)) ((consp x) (mapcan #'flat x)))))
+    (loop :for word :in (flat *org-todo-keywords*)
+          :unless (string= word "|")
+            :collect (subseq word 0 (position #\( word)))))
+
+(defun buffer-todo-sequences (buffer)
+  "The keyword sequences of BUFFER: its #+TODO: lines, else `*org-todo-keywords*'. Cached until the buffer changes."
+  (let ((cache (buffer-value buffer 'todo-sequences-cache))
+        (tick (buffer-modified-tick buffer)))
+    (if (and cache (eql (first cache) tick) (eq (second cache) *org-todo-keywords*))
+        (third cache)
+        (let ((sequences (todo-sequences-from-lines
+                          (split-text-lines (buffer-text buffer))
+                          (todo-sequences-from-setting *org-todo-keywords*))))
+          (setf (buffer-value buffer 'todo-sequences-cache) (list tick *org-todo-keywords* sequences))
+          sequences))))
+
+(defun org-todo-sequences (&optional (buffer (current-buffer)))
+  (or *org-todo-config* (buffer-todo-sequences buffer)))
+
+(defun org-keywords (&optional (buffer (current-buffer)))
+  "All TODO keywords in effect, as a flat list."
+  (sequences-keywords (org-todo-sequences buffer)))
+
+(defun org-done-keyword-p (keyword &optional (buffer (current-buffer)))
+  (sequences-done-p (org-todo-sequences buffer) keyword))
+
+(defmacro with-todo-buffer ((point) &body body)
+  "Run BODY with the keyword sequences of the buffer of POINT."
+  `(let ((*org-todo-config* (buffer-todo-sequences (point-buffer ,point))))
+     ,@body))
+
+(defvar *org-switch-function* 'switch-to-buffer
+  "The function that shows a buffer in the current window. Tests that run without a window replace it.")
+
+(defun org-switch-to-buffer (buffer)
+  (funcall *org-switch-function* buffer))
 
 (defun heading-attribute (level)
   (case level
@@ -65,13 +361,13 @@
     (5 'document-header5-attribute)
     (t 'document-header6-attribute)))
 
-(defun make-heading-pattern (level)
+(defun make-heading-pattern (level &optional (keywords (initial-todo-keywords)))
   "Match a heading with exactly LEVEL stars, colouring a leading todo keyword separately."
-  (make-tm-match (format nil "^\\*{~D} (?:(~{~A~^|~})\\b)?.*$" level *org-todo-keywords*)
+  (make-tm-match (format nil "^\\*{~D} (?:(~{~A~^|~})\\b)?.*$" level keywords)
                  :name (heading-attribute level)
                  :captures (vector nil (make-tm-name 'syntax-keyword-attribute))))
 
-(defun make-tmlanguage-org ()
+(defun make-tmlanguage-org (&optional (keywords (initial-todo-keywords)))
   (make-tmlanguage
    :patterns (make-tm-patterns
               (make-tm-region "^[ \\t]*#\\+(?:begin|BEGIN)_\\w+"
@@ -83,6 +379,12 @@
               (make-tm-match "^[ \\t]*(?:[-+]|\\d+[.)])[ \\t]+(?:\\[[ X-]\\][ \\t]+)?"
                              :name 'document-list-attribute)
               (make-tm-match "\\[\\[[^]]+\\](?:\\[[^]]+\\])?\\]" :name 'document-link-attribute)
+              (make-tm-match "(?:https?|ftp|mailto|file):[^\\s<>\\]\"]+" :name 'document-link-attribute)
+              (make-tm-match "^[ \\t]*(?:SCHEDULED|DEADLINE|CLOSED|CLOCK):" :name 'syntax-keyword-attribute)
+              (make-tm-match "[<\\[][0-9]{4}-[0-9]{2}-[0-9]{2}(?: [^\\]>]*)?[>\\]]" :name 'syntax-string-attribute)
+              (make-tm-match "^[ \\t]*:[A-Za-z_][A-Za-z0-9_-]*:(?: .*)?$" :name 'syntax-builtin-attribute)
+              (make-tm-match "\\[fn:[^]]*\\]" :name 'syntax-variable-attribute)
+              (make-tm-match "<<<?[^<>]+>>>?" :name 'syntax-variable-attribute)
               (make-tm-match "(?<![\\w*])\\*[^*\\s](?:[^*]*[^*\\s])?\\*(?![\\w*])"
                              :name 'document-bold-attribute)
               (make-tm-match "(?<![\\w/])/[^/\\s](?:[^/]*[^/\\s])?/(?![\\w/])"
@@ -92,21 +394,32 @@
               (make-tm-match "(?<![\\w~])~[^~\\s](?:[^~]*[^~\\s])?~(?![\\w~])"
                              :name 'document-inline-code-attribute)
               (make-tm-match ":(?:[\\w@#%]+:)+[ \\t]*$" :name 'syntax-constant-attribute)
-              (make-heading-pattern 1)
-              (make-heading-pattern 2)
-              (make-heading-pattern 3)
-              (make-heading-pattern 4)
-              (make-heading-pattern 5)
-              (make-heading-pattern 6))))
+              (make-heading-pattern 1 keywords)
+              (make-heading-pattern 2 keywords)
+              (make-heading-pattern 3 keywords)
+              (make-heading-pattern 4 keywords)
+              (make-heading-pattern 5 keywords)
+              (make-heading-pattern 6 keywords))))
 
-(defvar *org-syntax-table*
+(defun make-org-syntax-table (&optional (keywords (initial-todo-keywords)))
   (let ((table (make-syntax-table :space-chars '(#\space #\tab #\newline)
                                   :paren-pairs '((#\( . #\))
                                                  (#\[ . #\])
                                                  (#\{ . #\}))
                                   :line-comment-string "#")))
-    (set-syntax-parser table (make-tmlanguage-org))
+    (set-syntax-parser table (make-tmlanguage-org keywords))
     table))
+
+(defvar *org-syntax-table* (make-org-syntax-table))
+
+(defvar *org-keyword-syntax-tables* (make-hash-table :test 'equal)
+  "Syntax tables made for the keyword lists that buffers declare with #+TODO:, by keyword list.")
+
+(defun org-syntax-table-for (keywords)
+  (if (equal keywords (initial-todo-keywords))
+      *org-syntax-table*
+      (or (gethash keywords *org-keyword-syntax-tables*)
+          (setf (gethash keywords *org-keyword-syntax-tables*) (make-org-syntax-table keywords)))))
 
 (define-major-mode org-mode language-mode
     (:name "Org"
@@ -119,29 +432,45 @@
         (variable-value 'insertion-line-comment) "# "
         (variable-value 'fold-region-function) 'fold-region-at-heading))
 
+(defun org-update-highlighting (&optional (buffer (current-buffer)))
+  "Colour the todo keywords that BUFFER declares with #+TODO: lines (and not only the default ones)."
+  (when (eq (buffer-major-mode buffer) 'org-mode)
+    (let ((table (org-syntax-table-for (org-keywords buffer))))
+      (unless (eq table (buffer-syntax-table buffer))
+        (setf (buffer-syntax-table buffer) table))
+      table)))
+
+(defun org-setup-buffer (&rest arguments)
+  "Mode hook: highlighting for the buffer's own keywords, refreshed when it is saved."
+  (declare (ignore arguments))
+  (let ((buffer (current-buffer)))
+    (org-update-highlighting buffer)
+    (pushnew 'org-refresh-highlighting-after-save (variable-value 'after-save-hook :buffer buffer))))
+
+(defun org-refresh-highlighting-after-save (&rest arguments)
+  (declare (ignore arguments))
+  (org-update-highlighting (current-buffer)))
+
+(add-hook *org-mode-hook* 'org-setup-buffer)
+
 (define-key *org-mode-keymap* "Tab" 'org-cycle)
 (define-key *org-mode-keymap* "C-c C-t" 'org-todo)
-(define-key *org-mode-keymap* "Shift-Tab" 'org-table-previous-cell)
+(define-key *org-mode-keymap* "Shift-Tab" 'org-shift-tab)
 (define-key *org-mode-keymap* "M-Left" 'org-meta-left)
 (define-key *org-mode-keymap* "M-Right" 'org-meta-right)
 (define-key *org-mode-keymap* "M-Up" 'org-meta-up)
 (define-key *org-mode-keymap* "M-Down" 'org-meta-down)
-(define-key *org-mode-keymap* "M-Shift-Left" 'org-table-delete-column)
-(define-key *org-mode-keymap* "M-Shift-Right" 'org-table-insert-column)
-(define-key *org-mode-keymap* "M-Shift-Up" 'org-table-delete-row)
-(define-key *org-mode-keymap* "M-Shift-Down" 'org-table-insert-row)
+(define-key *org-mode-keymap* "M-Shift-Left" 'org-shift-meta-left)
+(define-key *org-mode-keymap* "M-Shift-Right" 'org-shift-meta-right)
+(define-key *org-mode-keymap* "M-Shift-Up" 'org-shift-meta-up)
+(define-key *org-mode-keymap* "M-Shift-Down" 'org-shift-meta-down)
 (define-key *org-mode-keymap* "C-c C-c" 'org-ctrl-c-ctrl-c)
-(define-key *org-mode-keymap* "C-c -" 'org-table-insert-hline)
 (define-key *org-mode-keymap* "M-Return" 'org-meta-return)
-(define-key *org-mode-keymap* "Shift-Up" 'org-priority-up)
-(define-key *org-mode-keymap* "Shift-Down" 'org-priority-down)
 (define-key *org-mode-keymap* "C-c C-s" 'org-schedule)
 (define-key *org-mode-keymap* "C-c C-d" 'org-deadline)
 (define-key *org-mode-keymap* "C-c C-q" 'org-set-tags-command)
 (define-key *org-mode-keymap* "C-c C-x p" 'org-set-property-command)
-(define-key *org-mode-keymap* "C-c a a" 'org-agenda-week)
-(define-key *org-mode-keymap* "C-c a t" 'org-agenda-todo-list)
-(define-key *org-mode-keymap* "C-c a m" 'org-agenda-tags)
+(define-key *org-mode-keymap* "C-c a" 'org-agenda)
 (define-key *org-mode-keymap* "C-c C-e h" 'org-export-html)
 (define-key *org-mode-keymap* "C-c C-e m" 'org-export-markdown)
 (define-key *org-mode-keymap* "C-c C-v t" 'org-babel-tangle)
@@ -154,16 +483,43 @@
 (define-key *org-mode-keymap* "C-c C-v v" 'org-babel-expand-src-block)
 (define-key *org-mode-keymap* "C-c C-v k" 'org-babel-remove-result)
 (define-key *org-mode-keymap* "C-c C-v I" 'org-babel-info)
+(define-key *org-mode-keymap* "C-c C-v d" 'org-babel-demarcate-block)
+(define-key *org-mode-keymap* "C-c C-v o" 'org-babel-open-src-block-result)
+(define-key *org-mode-keymap* "C-c C-v i" 'org-babel-lob-ingest)
 (define-key *org-mode-keymap* "C-c '" 'org-edit-src-block)
 (define-key *org-mode-keymap* "C-c C-x C-i" 'org-clock-in-command)
 (define-key *org-mode-keymap* "C-c C-x C-o" 'org-clock-out-command)
 (define-key *org-mode-keymap* "C-c C-x C-q" 'org-clock-cancel-command)
 
+(defun block-line-flags (lines)
+  "A vector with true for every line of LINES inside a #+begin_ ... #+end_ block (the begin and end lines included)."
+  (let ((flags (make-array (length lines) :initial-element nil)) (inside nil) (i 0))
+    (dolist (line lines flags)
+      (let ((s (string-left-trim '(#\space #\tab) line)))
+        (cond (inside
+               (setf (aref flags i) t)
+               (when (and (>= (length s) 6) (string-equal "#+end_" s :end2 6)) (setf inside nil)))
+              ((and (>= (length s) 8) (string-equal "#+begin_" s :end2 8))
+               (setf (aref flags i) t inside t))))
+      (incf i))))
+
+(defun buffer-block-flags (buffer)
+  "`block-line-flags' for BUFFER, kept until the buffer changes."
+  (let ((cache (buffer-value buffer 'block-flags-cache)) (tick (buffer-modified-tick buffer)))
+    (if (and cache (eql (car cache) tick))
+        (cdr cache)
+        (let ((flags (block-line-flags (split-text-lines (buffer-text buffer)))))
+          (setf (buffer-value buffer 'block-flags-cache) (cons tick flags))
+          flags))))
+
 (defun org-heading-level (point)
-  "Return the number of stars if POINT's line is an Org heading, otherwise NIL."
+  "Return the number of stars if POINT's line is an Org heading, otherwise NIL. Lines inside blocks are never headings."
   (let* ((string (line-string point))
          (stars (position-if-not (lambda (c) (char= c #\*)) string)))
-    (when (and stars (plusp stars) (char= (char string stars) #\space))
+    (when (and stars (plusp stars) (char= (char string stars) #\space)
+               (let ((flags (buffer-block-flags (point-buffer point)))
+                     (index (1- (line-number-at-point point))))
+                 (not (and (< -1 index (length flags)) (aref flags index)))))
       stars)))
 
 (defun org-subtree-bounds (point)
@@ -192,13 +548,8 @@ END is the start of the next heading of the same or a higher level, or the end o
   (cond ((org-table-at-point-p (current-point))
          (org-table-next-cell (current-point)))
         ((org-heading-level (current-point))
-         (fold-toggle-at-point (current-point)))
+         (org-cycle-heading (current-point)))
         (t (indent))))
-
-(defun next-todo-keyword (current)
-  (if current
-      (second (member current *org-todo-keywords* :test #'string=))
-      (first *org-todo-keywords*)))
 
 (defun heading-todo-keyword (text)
   "Return the todo keyword that TEXT, the heading line after its stars, starts with."
@@ -206,16 +557,15 @@ END is the start of the next heading of the same or a higher level, or the end o
              (and (uiop:string-prefix-p keyword text)
                   (or (= (length text) (length keyword))
                       (char= (char text (length keyword)) #\space))))
-           *org-todo-keywords*))
+           (org-keywords)))
 
-(defun org-cycle-todo (point)
-  "Advance the todo keyword of the heading at POINT: none, TODO, DONE, none."
+(defun org-set-todo-keyword (point next)
+  "Replace the todo keyword of the heading at POINT by NEXT (a keyword or NIL). Return the old keyword."
   (let ((level (org-heading-level point)))
     (unless level
       (editor-error "Not on a heading"))
     (let* ((text (subseq (line-string point) (1+ level)))
-           (current (heading-todo-keyword text))
-           (next (next-todo-keyword current)))
+           (current (heading-todo-keyword text)))
       (with-point ((start point))
         (character-offset (line-start start) (1+ level))
         (when current
@@ -227,13 +577,20 @@ END is the start of the next heading of the same or a higher level, or the end o
         (when next
           (insert-string start (if (or current (zerop (length text)))
                                    next
-                                   (format nil "~A " next))))))))
+                                   (format nil "~A " next)))))
+      current)))
 
-(define-command org-todo () ()
-  "Cycle the todo keyword of the current heading."
-  (org-cycle-todo (current-point))
-  (org-todo-update-closed (current-point))
-  (org-clock-stop-for-done (current-point)))
+(defun org-cycle-todo (point &optional (direction 1))
+  "Advance the todo keyword of the heading at POINT through its sequence: none, TODO, DONE, none.
+A negative DIRECTION goes backward. Return (values old new)."
+  (let ((level (org-heading-level point)))
+    (unless level
+      (editor-error "Not on a heading"))
+    (with-todo-buffer (point)
+      (let* ((current (heading-todo-keyword (subseq (line-string point) (1+ level))))
+             (next (sequences-next (org-todo-sequences) current direction)))
+        (org-set-todo-keyword point next)
+        (values current next)))))
 
 (defun subtree-headings (start end)
   "Return (line-offset . level) for every heading line in [START, END), offsets counted from START."
@@ -390,6 +747,10 @@ Return (values new-rows new-row new-column)."
       (:move-row-down (progn (unless (< (1+ row) (length rows)) (editor-error "Cannot move the row further"))
                              (values (table-swap rows row (1+ row)) (1+ row) column)))
       (:insert-hline (values (table-insert-at rows (1+ row) :rule) row column))
+      (:next-row (let ((next (table-rule-index rows row 1)))
+                   (if next
+                       (values rows next column)
+                       (values (append rows (list (table-new-row count))) (length rows) column))))
       (:align (values rows row column))
       (:next-cell
        (cond ((< (1+ column) count) (values rows row (1+ column)))
@@ -457,6 +818,12 @@ Return (values new-rows new-row new-column)."
 (defun org-table-next-cell (point)
   (org-table-edit point :next-cell))
 
+(define-command org-shift-tab () ()
+  "In a table move to the previous cell, elsewhere cycle the visibility of the whole buffer."
+  (if (org-table-at-point-p (current-point))
+      (org-table-edit (current-point) :previous-cell)
+      (org-global-cycle)))
+
 (define-command org-table-previous-cell () ()
   "Move to the previous table cell, realigning the table."
   (org-table-edit (current-point) :previous-cell))
@@ -485,21 +852,45 @@ Return (values new-rows new-row new-column)."
   "Insert a horizontal line below the current row."
   (org-table-edit (current-point) :insert-hline))
 
-(defmacro define-meta-command (name table-operation heading-form doc)
+(defmacro define-meta-command (name table-operation item-form heading-form doc)
   `(define-command ,name () ()
      ,doc
-     (if (org-table-at-point-p (current-point))
-         (org-table-edit (current-point) ,table-operation)
-         ,heading-form)))
+     (cond ((org-table-at-point-p (current-point)) (org-table-edit (current-point) ,table-operation))
+           ((org-item-at-point-p (current-point)) ,item-form)
+           (t ,heading-form))))
 
-(define-meta-command org-meta-left :move-column-left (org-shift-subtree (current-point) -1)
-  "In a table move the column left, otherwise promote the subtree.")
-(define-meta-command org-meta-right :move-column-right (org-shift-subtree (current-point) 1)
-  "In a table move the column right, otherwise demote the subtree.")
-(define-meta-command org-meta-up :move-row-up (org-move-subtree (current-point) :up)
-  "In a table move the row up, otherwise move the subtree up.")
-(define-meta-command org-meta-down :move-row-down (org-move-subtree (current-point) :down)
-  "In a table move the row down, otherwise move the subtree down.")
+(define-meta-command org-meta-left :move-column-left (org-indent-item (current-point) -2) (org-shift-subtree (current-point) -1)
+  "In a table move the column left, on a list item outdent it, otherwise promote the subtree.")
+(define-meta-command org-meta-right :move-column-right (org-indent-item (current-point) 2) (org-shift-subtree (current-point) 1)
+  "In a table move the column right, on a list item indent it, otherwise demote the subtree.")
+(define-meta-command org-meta-up :move-row-up (org-move-item (current-point) -1) (org-move-subtree (current-point) :up)
+  "In a table move the row up, on a list item move the item up, otherwise move the subtree up.")
+(define-meta-command org-meta-down :move-row-down (org-move-item (current-point) 1) (org-move-subtree (current-point) :down)
+  "In a table move the row down, on a list item move the item down, otherwise move the subtree down.")
+
+(define-command org-shift-meta-left () ()
+  "In a table delete the column, on a list item outdent it with its sub-items, otherwise promote the subtree."
+  (cond ((org-table-at-point-p (current-point)) (org-table-edit (current-point) :delete-column))
+        ((org-item-at-point-p (current-point)) (org-indent-item (current-point) -2))
+        (t (org-shift-subtree (current-point) -1))))
+
+(define-command org-shift-meta-right () ()
+  "In a table insert a column, on a list item indent it with its sub-items, otherwise demote the subtree."
+  (cond ((org-table-at-point-p (current-point)) (org-table-edit (current-point) :insert-column))
+        ((org-item-at-point-p (current-point)) (org-indent-item (current-point) 2))
+        (t (org-shift-subtree (current-point) 1))))
+
+(define-command org-shift-meta-up () ()
+  "In a table delete the row, otherwise move the subtree up."
+  (if (org-table-at-point-p (current-point))
+      (org-table-edit (current-point) :delete-row)
+      (org-move-subtree (current-point) :up)))
+
+(define-command org-shift-meta-down () ()
+  "In a table insert a row, otherwise move the subtree down."
+  (if (org-table-at-point-p (current-point))
+      (org-table-edit (current-point) :insert-row)
+      (org-move-subtree (current-point) :down)))
 
 ;;; Under lem-vi-mode the normal-state keymap outranks the mode keymap, and it binds Tab to a jump. Take Tab
 ;;; over in that keymap; outside Org buffers it still does what vi does.
@@ -706,6 +1097,16 @@ CHECKBOX is the character inside the brackets, or NIL."
                                   line))))))
             lines)))
 
+(defun list-line-p (string)
+  (and (plusp (length (string-trim " " string)))
+       (not (org-heading-string-p string))
+       (or (list-item-parse string)
+           (char= (char string 0) #\space))))
+
+(defun org-heading-string-p (string)
+  (let ((stars (position-if-not (lambda (c) (char= c #\*)) string)))
+    (and stars (plusp stars) (char= (char string stars) #\space))))
+
 ;;; END pure list code
 
 (defun item-block-start (point)
@@ -716,16 +1117,6 @@ CHECKBOX is the character inside the brackets, or NIL."
           :while (and (line-offset q -1) (list-line-p (line-string q)))
           :do (move-point p q))
     p))
-
-(defun list-line-p (string)
-  (and (plusp (length (string-trim " " string)))
-       (not (org-heading-string-p string))
-       (or (list-item-parse string)
-           (char= (char string 0) #\space))))
-
-(defun org-heading-string-p (string)
-  (let ((stars (position-if-not (lambda (c) (char= c #\*)) string)))
-    (and stars (plusp stars) (char= (char string stars) #\space))))
 
 (defun following-lines (point)
   "The strings of POINT's line and every line after it."
@@ -785,7 +1176,8 @@ CHECKBOX is the character inside the brackets, or NIL."
   (let ((new (list-toggle-checkbox (line-string point))))
     (unless new
       (editor-error "Not on a list item"))
-    (replace-lines (line-start (copy-point point :temporary)) 1 (list new))))
+    (replace-lines (line-start (copy-point point :temporary)) 1 (list new))
+    (org-update-cookies point)))
 
 (define-command org-toggle-checkbox-command () ()
   "Toggle the checkbox of the current list item."
@@ -797,6 +1189,10 @@ CHECKBOX is the character inside the brackets, or NIL."
 ;;; optional planning line (SCHEDULED, DEADLINE, CLOSED) and an optional :PROPERTIES: drawer.
 
 ;;; BEGIN pure heading code
+
+(defvar *org-priority-highest* #\A "The highest priority letter.")
+(defvar *org-priority-lowest* #\C "The lowest priority letter.")
+(defvar *org-priority-default* #\B "The priority of an entry that has none, for sorting.")
 
 (defun heading-split (line keywords)
   "Return (values level todo priority title tags) of the heading LINE, or NIL when it is not a heading."
@@ -860,7 +1256,8 @@ CHECKBOX is the character inside the brackets, or NIL."
   "Move the priority of the heading LINE through none, C, B, A (DELTA +1, up) or the reverse (DELTA -1)."
   (multiple-value-bind (level todo priority title tags) (heading-split line keywords)
     (unless level (editor-error "Not on a heading"))
-    (let* ((ring '(nil #\C #\B #\A))
+    (let* ((ring (cons nil (loop :for code :from (char-code *org-priority-lowest*) :downto (char-code *org-priority-highest*)
+                                 :collect (code-char code))))
            (next (nth (mod (+ (or (position priority ring) 0) delta) (length ring)) ring)))
       (heading-join level todo next title tags))))
 
@@ -1001,10 +1398,10 @@ CHECKBOX is the character inside the brackets, or NIL."
     (replace-lines heading 1 (list (funcall function (line-string heading))))))
 
 (defun org-set-tags (point tags)
-  (org-edit-heading-line point (lambda (line) (heading-set-tags line *org-todo-keywords* tags))))
+  (org-edit-heading-line point (lambda (line) (heading-set-tags line (org-keywords) tags))))
 
 (defun org-cycle-priority (point delta)
-  (org-edit-heading-line point (lambda (line) (heading-cycle-priority line *org-todo-keywords* delta))))
+  (org-edit-heading-line point (lambda (line) (heading-cycle-priority line (org-keywords) delta))))
 
 (defun org-set-planning (point keyword stamp)
   (org-edit-head point (lambda (head) (head-set-planning head keyword stamp))))
@@ -1015,15 +1412,14 @@ CHECKBOX is the character inside the brackets, or NIL."
 (defun org-todo-update-closed (point)
   "Add a CLOSED timestamp when the entry at POINT is in its last todo state, and remove it otherwise."
   (let* ((heading (heading-point point))
-         (done (equal (nth-value 1 (heading-split (line-string heading) *org-todo-keywords*))
-                      (car (last *org-todo-keywords*)))))
+         (done (org-done-keyword-p (nth-value 1 (heading-split (line-string heading) (org-keywords))))))
     (org-set-planning point "CLOSED" (and done (multiple-value-call #'format-timestamp (today))))))
 
 (define-command org-set-tags-command () ()
   "Set the tags of the current heading. Enter them as work:home or :work:home:."
   (let ((heading (heading-point (current-point))))
     (multiple-value-bind (level todo priority title tags)
-        (heading-split (line-string heading) *org-todo-keywords*)
+        (heading-split (line-string heading) (org-keywords))
       (declare (ignore todo priority title))
       (unless level (editor-error "Not on a heading"))
       (org-set-tags (current-point)
@@ -1038,21 +1434,24 @@ CHECKBOX is the character inside the brackets, or NIL."
   "Lower the priority of the current heading: none, A, B, C, none."
   (org-cycle-priority (current-point) -1))
 
-(defun prompt-for-planning (keyword)
-  (multiple-value-bind (year month day) (today)
-    (multiple-value-bind (y m d)
-        (parse-date-input (prompt-for-string (format nil "~A date (YYYY-MM-DD, +3d, +1w; empty for today): "
-                                                    (string-capitalize keyword)))
-                          year month day)
-      (org-set-planning (current-point) keyword (format-timestamp y m d (string/= keyword "CLOSED"))))))
+(defun prompt-for-planning (point keyword)
+  "Ask for a date (and optionally a time) and set the planning KEYWORD of the entry at POINT."
+  (let* ((today-day (multiple-value-call #'date-day (today)))
+         (input (prompt-for-string (format nil "~A (date, e.g. +3d, fri, 2026-10-22 14:30; empty for today): "
+                                           (string-capitalize keyword)))))
+    (multiple-value-bind (day hour minute end-hour end-minute) (date-input-parse input today-day)
+      (let ((ts (timestamp-with-day (list :active (string/= keyword "CLOSED") :hour hour :minute minute
+                                          :end-hour end-hour :end-minute end-minute)
+                                    day)))
+        (org-set-planning point keyword (timestamp-format ts))))))
 
 (define-command org-schedule () ()
   "Set the SCHEDULED date of the current entry."
-  (prompt-for-planning "SCHEDULED"))
+  (prompt-for-planning (current-point) "SCHEDULED"))
 
 (define-command org-deadline () ()
   "Set the DEADLINE date of the current entry."
-  (prompt-for-planning "DEADLINE"))
+  (prompt-for-planning (current-point) "DEADLINE"))
 
 (define-command org-set-property-command () ()
   "Set a property in the :PROPERTIES: drawer of the current entry."
@@ -1210,8 +1609,7 @@ Return the second value of FUNCTION."
         (heading (enclosing-heading point)))
     (when (and running heading
                (point= heading (enclosing-heading running))
-               (equal (nth-value 1 (heading-split (line-string heading) *org-todo-keywords*))
-                      (car (last *org-todo-keywords*))))
+               (org-done-keyword-p (nth-value 1 (heading-split (line-string heading) (org-keywords)))))
       (org-clock-out point (now)))))
 
 (define-command org-clock-in-command () ()
@@ -1316,12 +1714,13 @@ Return the second value of FUNCTION."
   (cond ((member name '("postgres" "postgresql" "psql") :test #'string-equal) :psql)
         ((member name '("mssql" "sqlserver" "sqlcmd") :test #'string-equal) :sqlcmd)
         ((member name '("db2i" "ibmi" "odbc" "isql") :test #'string-equal) :isql)
-        (t (editor-error "Unknown SQL engine ~A (use postgres, mssql or db2i)" name))))
+        ((member name '("sqlite" "sqlite3") :test #'string-equal) :sqlite)
+        (t (editor-error "Unknown SQL engine ~A (use postgres, mssql, db2i or sqlite)" name))))
 
 (defun sql-input (kind sql)
   "The text to feed the client of engine KIND on stdin. sqlcmd runs nothing from a pipe without a final GO."
   (ecase kind
-    (:psql sql)
+    ((:psql :sqlite) sql)
     (:sqlcmd (format nil "~A~%GO~%" sql))
     (:isql (sql-statements-per-line sql))))
 
@@ -1334,6 +1733,9 @@ Return the second value of FUNCTION."
   "Return (values argv parser) to run SQL of engine KIND with the header ARGS (an alist)."
   (flet ((arg (name) (cdr (assoc name args :test #'string=))))
     (ecase kind
+      (:sqlite
+       (values (append (list "sqlite3" "-header" "-csv") (and (arg "db") (list (arg "db"))))
+               (lambda (output) (csv-parse output))))
       (:psql
        (values (append (list "psql" "-X" "-q" "--csv")
                        (and (arg "host") (list "-h" (arg "host")))
@@ -1399,11 +1801,17 @@ Return the second value of FUNCTION."
       (funcall parser output))))
 
 (define-command org-ctrl-c-ctrl-c () ()
-  "Do the context-appropriate action: run a source block or #+CALL:, realign a table, or toggle a checkbox."
+  "Do the context-appropriate action: run a source block or #+CALL:, recompute or realign a table, update a dynamic block or CLOCK line, toggle a checkbox, or set the tags of a heading."
   (let ((point (current-point)))
     (cond ((or (src-block-bounds point) (org-call-line-p point)) (org-babel-execute point))
+          ((table-point-above-tblfm point) (org-table-recalculate (table-point-above-tblfm point)))
+          ((and (org-table-at-point-p point) (table-formula-lines (table-end-line (table-first-line point))))
+           (org-table-recalculate point))
+          ((org-dblock-line-p point) (org-dblock-update point))
+          ((clock-line-p (line-string point)) (org-clock-update-line point))
           ((org-table-at-point-p point) (org-table-edit point :align))
           ((org-item-at-point-p point) (org-toggle-checkbox point))
+          ((org-heading-level point) (org-set-tags-command))
           (t (editor-error "Nothing to do here")))))
 
 (define-file-type ("org") org-mode)

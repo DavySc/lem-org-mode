@@ -1,0 +1,45 @@
+(in-package :lem-org-mode/tests)
+
+(deftest test-export-formats-to-files
+  (with-temp-org-file (file (lines "#+TITLE: Doc" "* One" "text with *bold*" "* Two :noexport:" "secret"))
+    (let ((buffer (lem:find-file-buffer (uiop:native-namestring file))))
+      (setf (lem:current-buffer) buffer)
+      (dolist (case '((:html "html" "<b>bold</b>") (:markdown "md" "**bold**") (:ascii "txt" "*bold*")
+                      (:latex "tex" "\\textbf{bold}") (:org "org.txt" "text with *bold*")))
+        (let ((target (lem-org-mode::export-run buffer (first case))))
+          (ok (probe-file target) (format nil "~A file written" (first case)))
+          (let ((text (uiop:read-file-string target)))
+            (ok (search (third case) text) (format nil "~A has the markup" (first case)))
+            (ok (not (search "secret" text)) (format nil "~A drops :noexport:" (first case))))))
+      (let ((target (lem-org-mode::export-run buffer :ics)))
+        (ok (search "BEGIN:VCALENDAR" (uiop:read-file-string target))))
+      (let ((target (lem-org-mode::export-dispatch buffer "hb")))
+        (ok (not (search "<html" (uiop:read-file-string target))) "body only has no document frame"))
+      (ok (signals (lem-org-mode::export-dispatch buffer "z") 'editor-error)))))
+
+(deftest test-export-subtree
+  (with-temp-org-file (file (lines "* Chapter" ":PROPERTIES:" ":EXPORT_FILE_NAME: chapter.html" ":END:" "intro" "** Section" "text" "* Other"))
+    (let ((buffer (lem:find-file-buffer (uiop:native-namestring file))))
+      (setf (lem:current-buffer) buffer)
+      (move-to-line (current-point) 1)
+      (let* ((target (lem-org-mode::export-run buffer :html :subtree t))
+             (text (uiop:read-file-string target)))
+        (ok (search "chapter.html" (namestring target)) "EXPORT_FILE_NAME names the file")
+        (ok (search "<title>Chapter</title>" text) "the heading is the title")
+        (ok (search "Section" text))
+        (ok (not (search "Other" text)))))))
+
+(deftest test-export-includes-from-disk
+  (with-temp-org-file (file (lines "#+INCLUDE: \"part.org\"" "after"))
+    (with-open-file (out (merge-pathnames "part.org" (uiop:pathname-directory-pathname file)) :direction :output :if-exists :supersede)
+      (write-string (lines "* Included heading") out))
+    (let ((buffer (lem:find-file-buffer (uiop:native-namestring file))))
+      (setf (lem:current-buffer) buffer)
+      (let ((text (uiop:read-file-string (lem-org-mode::export-run buffer :html))))
+        (ok (search "Included heading" text))))))
+
+(deftest test-export-to-buffer
+  (let ((buffer (make-org-buffer (lines "* A" "text"))))
+    (setf (lem:current-buffer) buffer)
+    (let ((export (lem-org-mode::export-run buffer :markdown)))
+      (ok (search "# A" (text-of export))))))

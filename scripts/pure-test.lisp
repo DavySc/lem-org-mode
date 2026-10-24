@@ -6,6 +6,7 @@
 ;;; scratch package (with `editor-error' stubbed) and checked. Exit status 1 when a check fails.
 
 (require :asdf)
+(ignore-errors (let ((*error-output* (make-broadcast-stream)) (*standard-output* (make-broadcast-stream))) (asdf:load-system :cl-ppcre)))
 (defpackage :org-pure-test (:use :cl))
 (in-package :org-pure-test)
 
@@ -24,7 +25,7 @@
                       (inside (write-line line text))))
       (get-output-stream-string text))))
 
-(dolist (file '("org-mode.lisp" "agenda.lisp" "babel-model.lisp" "export.lisp" "babel.lisp"))
+(dolist (file '("org-mode.lisp" "timestamp.lisp" "tasks-model.lisp" "planning.lisp" "structure.lisp" "capture.lisp" "links.lisp" "tables.lisp" "dblocks.lisp" "editing.lisp" "agenda.lisp" "babel-model.lisp" "export.lisp" "export-more.lisp" "publish.lisp" "babel.lisp"))
   (with-input-from-string (in (pure-regions file))
     (loop :for form := (read in nil :eof) :until (eq form :eof)
           :do (let ((*error-output* (make-broadcast-stream))) (eval form)))))
@@ -119,16 +120,16 @@
 (check "entry done" '(nil t nil nil) (mapcar (lambda (e) (getf e :done)) *entries*))
 (defvar *today* (date-day 2026 10 22))
 (check "today's items, highest priority first" '("Scheduled:" "In 3 d.:" "Sched.2x:")
-       (mapcar #'car (agenda-day-items *entries* *today* *today* 14)))
-(check "deadline day" '("Deadline:") (mapcar #'car (agenda-day-items *entries* (+ *today* 3) *today* 14)))
-(check "week shape" 11 (length (agenda-week-records *entries* *today* 7 14)))
-(check "week header" "Thursday 22 October 2026" (car (first (agenda-week-records *entries* *today* 7 14))))
+       (mapcar (lambda (i) (getf i :label)) (agenda-day-items *entries* *today* *today* 14)))
+(check "deadline day" '("Deadline:") (mapcar (lambda (i) (getf i :label)) (agenda-day-items *entries* (+ *today* 3) *today* 14)))
+(check "week shape" 11 (length (agenda-week-records *entries* *today* 7 *today* 14)))
+(check "week header" "Thursday 22 October 2026  <today>" (car (first (agenda-week-records *entries* *today* 7 *today* 14))))
 (check "week item text" t
-       (let ((line (car (second (agenda-week-records *entries* *today* 7 14)))))
+       (let ((line (car (second (agenda-week-records *entries* *today* 7 *today* 14)))))
          (and (contains line "notes:") (contains line "Scheduled:") (contains line "TODO [#A] Write report :work:"))))
 (check "todo list order" '("Write report" "Pay rent" "Overdue")
        (mapcar (lambda (r) (getf (cdr r) :title)) (agenda-todo-records *entries*)))
-(check "tag search" '("Write report") (mapcar (lambda (r) (getf (cdr r) :title)) (agenda-tag-records *entries* "WORK")))
+(check "tag search inherits tags" '("Write report" "Old") (mapcar (lambda (r) (getf (cdr r) :title)) (agenda-tag-records *entries* "WORK")))
 
 ;;; export
 (check "html escape" "a &lt; b &amp; c" (html-escape "a < b & c"))
@@ -136,7 +137,8 @@
        (export-inline "a *b* /c/ =d*e= [[http://x][y]] 1*2*3 +z+" :html))
 (check "inline markdown" "a **b** *c* `d` [y](http://x) ~~z~~"
        (export-inline "a *b* /c/ ~d~ [[http://x][y]] +z+" :markdown))
-(check "bare link" "<a href=\"x.org\">file:x.org</a>" (export-inline "[[file:x.org]]" :html))
+(check "bare link" "<a href=\"x.html\">file:x.org</a>" (export-inline "[[file:x.org]]" :html))
+(check "image link" "<img src=\"a.png\" alt=\"a.png\">" (export-inline "[[file:a.png]]" :html))
 (defvar *org-doc*
   (list "#+TITLE: Notes" "#+AUTHOR: Me" "* TODO [#A] First :t:" "SCHEDULED: <2026-10-22 Thu>"
         ":PROPERTIES:" ":ID: 1" ":END:" "Some *bold* text" "continues here."
@@ -146,19 +148,19 @@
         "#+begin_src sql :exports both" "select 1;" "#+end_src" "#+RESULTS:" "| 1 |" ""
         "#+begin_src sh" "echo 1 < 2" "#+end_src" "#+RESULTS:" ": 1" ""
         "#+begin_quote" "quoted" "#+end_quote" "# a comment" ": example" "-----"))
-(check "parse node kinds" '(:heading :planning :paragraph :list :list :table :src :table :src :quote :example :rule)
+(check "parse node kinds" '(:heading :planning :properties :paragraph :list :list :table :src :table :src :quote :example :rule)
        (mapcar #'first (export-parse *org-doc* *kw*)))
 (check "parse meta" '(("TITLE" . "Notes") ("AUTHOR" . "Me")) (nth-value 1 (export-parse *org-doc* *kw*)))
-(check "paragraph joined" "Some *bold* text continues here." (second (third (export-parse *org-doc* *kw*))))
+(check "paragraph keeps its line breaks" (format nil "Some *bold* text~%continues here.") (second (fourth (export-parse *org-doc* *kw*))))
 (check "nested list" '(("-" nil "one" (("-" nil "nested [[http://a][A]]" nil))) ("-" nil "two" nil))
-       (third (fourth (export-parse *org-doc* *kw*))))
+       (third (fifth (export-parse *org-doc* *kw*))))
 (defvar *html* (export-html *org-doc* *kw*))
 (check "html pieces" t
        (and (contains *html* "<title>Notes</title>") (contains *html* "<h1 class=\"title\">Notes</h1>")
-            (contains *html* "<h2><span class=\"todo TODO\">TODO</span> <span class=\"priority\">[#A]</span> First")
-            (contains *html* "<ul>") (contains *html* (format nil "<li>one~%<ul>")) (contains *html* "<a href=\"http://a\">A</a>")
-            (contains *html* "<ol>") (contains *html* "<code>[X]</code> done")
-            (contains *html* "<thead>") (contains *html* "<th>h1</th>") (contains *html* "<td>a</td>")
+            (contains *html* "<span class=\"todo TODO\">TODO</span> <span class=\"priority\">[#A]</span> First")
+            (contains *html* "<ul class=\"org-ul\">") (contains *html* (format nil "<li>one~%<ul class=\"org-ul\">")) (contains *html* "<a href=\"http://a\">A</a>")
+            (contains *html* "<ol class=\"org-ol\">") (contains *html* "<code>[X]</code> done")
+            (contains *html* "<thead>") (contains *html* "<th class=\"org-left\">h1</th>") (contains *html* "<td class=\"org-left\">a</td>")
             (contains *html* "<pre class=\"src src-sql\">") (contains *html* "echo 1 &lt; 2")
             (contains *html* "<blockquote>") (contains *html* "<hr>") (contains *html* "<pre class=\"example\">example</pre>")
             (not (contains *html* "ID: 1")) (not (contains *html* "a comment"))
@@ -168,7 +170,7 @@
        (and (contains *md* (format nil "# Notes~%~%## **TODO** [#A] First"))
             (contains *md* (format nil "- one~%   - nested [A](http://a)~%- two"))
             (contains *md* (format nil "1. [X] done~%2. open"))
-            (contains *md* (format nil "| h1 | h2 |~%| --- | --- |~%| a | 1 |"))
+            (contains *md* (format nil "| h1 | h2 |~%| --- | ---: |~%| a | 1 |"))
             (contains *md* (format nil "```sql~%select 1;~%```"))
             (contains *md* (format nil "> quoted")) (contains *md* "---")))
 (check "results only for exports both" nil
@@ -183,7 +185,7 @@
 (check "markdown with title" (format nil "# T~%~%## Head~%~%text **bold**~%")
        (export-markdown (list "#+TITLE: T" "* Head" "text *bold*") *kw*))
 (check "markdown without title" (format nil "# Head~%~%text~%") (export-markdown (list "* Head" "text") *kw*))
-(check "html heading" t (contains (export-html (list "* Head" "text") *kw*) "<h2>Head</h2>"))
+(check "html heading" t (contains (export-html (list "* Head" "text") *kw*) "Head</h2>"))
 
 
 ;;; babel: header arguments
@@ -351,8 +353,8 @@ b" ("x" "y"))
 (check "file with description" '("#+RESULTS:" "[[file:o.png][Plot]]")
        (format-babel-result "" '(("results" . "file") ("file" . "o.png") ("file-desc" . "\"Plot\""))))
 (check "named and cached header" '("#+RESULTS[ab12]: foo" ": 1") (format-babel-result 1 nil :name "foo" :hash "ab12"))
-(check "empty result" nil (format-babel-result "" nil))
-(check "empty table" nil (format-babel-result nil nil))
+(check "empty result" '("#+RESULTS:") (format-babel-result "" nil))
+(check "empty table" '("#+RESULTS:") (format-babel-result nil nil))
 
 ;;; babel: where results go
 (check "insert a new result" '(:insert 4 ("" "#+RESULTS:" ": 1")) (result-edit '("next") 3 nil '("#+RESULTS:" ": 1") "replace"))
@@ -402,10 +404,10 @@ b" ("x" "y"))
                      "#+begin_src c :noweb strip-export" "<<part>>" "int z;" "#+end_src"
                      "#+begin_src c :noweb tangle" "<<part>>" "int w;" "#+end_src")
                *kw*))
-(check "export: header-args exports is inherited" nil (contains *noweb-export-html* (format nil "<code>int x;</code>")))
-(check "export: noweb yes expands" t (contains *noweb-export-html* (format nil "<code>int x;~%int y;</code>")))
-(check "export: strip-export removes references" t (contains *noweb-export-html* (format nil "<code>~%int z;</code>")))
-(check "export: noweb tangle keeps references" t (contains *noweb-export-html* (format nil "<code>&lt;&lt;part&gt;&gt;~%int w;</code>")))
+(check "export: header-args exports is inherited" nil (contains *noweb-export-html* (format nil ">int x;</pre>")))
+(check "export: noweb yes expands" t (contains *noweb-export-html* (format nil ">int x;~%int y;</pre>")))
+(check "export: strip-export removes references" t (contains *noweb-export-html* (format nil ">~%int z;</pre>")))
+(check "export: noweb tangle keeps references" t (contains *noweb-export-html* (format nil ">&lt;&lt;part&gt;&gt;~%int w;</pre>")))
 
 ;;; babel: tangle
 (defvar *tangle-doc*
@@ -515,6 +517,11 @@ b" ("x" "y"))
 (with-interpreter ("java" ("java" "-version"))
   (check "java" "hi" (run-block "java" "public class Main { public static void main(String[] a) { System.out.println(\"hi\"); } }" :mode :output)))
 (check-error "vars unsupported for go" (babel-assignment :go "x" "1"))
+
+;;; further tests, one file per area, in scripts/pure/
+(dolist (file (sort (directory (merge-pathnames "scripts/pure/*.lisp" *root*)) #'string< :key #'namestring))
+  (let ((*package* (find-package :org-pure-test)))
+    (load file)))
 
 (format t "~%~D failure~:P~%" *failures*)
 (sb-ext:exit :code (if (zerop *failures*) 0 1))

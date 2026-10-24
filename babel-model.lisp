@@ -161,6 +161,37 @@ Return ((lang . alist) ...), LANG being NIL for the generic ones."
                   line)))
           raw))
 
+;;; Library of Babel
+
+(defvar *babel-library-records* '()
+  "Named elements (from `babel-scan') of the Library of Babel: blocks that any file can call or use as :var.")
+
+;;; Header arguments in effect for a block
+
+(defun inherited-header-args (file-args stack language own)
+  "The header arguments of a block of LANGUAGE: defaults, #+PROPERTY lines (FILE-ARGS), enclosing headings
+(STACK, innermost first) and the block's OWN."
+  (apply #'header-args-merge
+         *org-babel-default-header-args*
+         (args-for-language file-args language)
+         (append (mapcar (lambda (entry) (args-for-language (getf entry :args) language))
+                         (reverse stack))
+                 (list own))))
+
+(defun heading-stack-push (stack lines index keywords)
+  "STACK (innermost heading first) after the heading at INDEX of the vector LINES; each entry holds
+:level :title and the header arguments of the heading's property drawer."
+  (let* ((line (aref lines index)) (n (length lines))
+         (level (heading-split line keywords))
+         (title (nth-value 3 (heading-split line keywords)))
+         (j (1+ index)) (args '()))
+    (when (and (< j n) (planning-line-p (aref lines j))) (incf j))
+    (when (and (< j n) (string-equal (string-trim " " (aref lines j)) ":PROPERTIES:"))
+      (let ((end (or (position-if (lambda (l) (string-equal (string-trim " " l) ":END:")) lines :start j) n)))
+        (setf args (property-header-args (coerce (subseq lines (1+ j) end) 'list)))))
+    (cons (list :level level :title title :args args)
+          (remove-if (lambda (entry) (>= (getf entry :level) level)) stack))))
+
 (defun babel-scan (lines keywords)
   "Return the elements of the Org text LINES in order, as property lists.
 :kind is :src, :table, :list, :example, :results or :call. Every element has :begin and :end, 0-based line
@@ -168,7 +199,7 @@ indexes, and :name from a preceding #+NAME:. A :src also has :language :switches
 :args (the inherited ones merged) :body :indent :heading and :level."
   (let* ((v (coerce lines 'vector)) (n (length v)) (i 0)
          (file-args (file-header-args lines))
-         (stack '()) (pending nil) (records '()))
+         (stack '()) (pending nil) (pending-header nil) (records '()))
     (flet ((emit (record) (push record records)))
       (loop :while (< i n)
             :do (let ((line (aref v i)))
@@ -178,19 +209,18 @@ indexes, and :name from a preceding #+NAME:. A :src also has :language :switches
                             (last (or end (1- n)))
                             (indent (line-indent line)))
                        (multiple-value-bind (language own switches) (src-header line)
+                         (setf own (header-args-merge own pending-header))
                          (emit (list :kind :src :name pending :begin i :end last
                                      :language language :switches switches :own own
-                                     :args (apply #'header-args-merge
-                                                  *org-babel-default-header-args*
-                                                  (args-for-language file-args language)
-                                                  (append (mapcar (lambda (entry)
-                                                                    (args-for-language (getf entry :args) language))
-                                                                  (reverse stack))
-                                                          (list own)))
+                                     :args (inherited-header-args file-args stack language own)
                                      :body (babel-body-lines (coerce (subseq v (1+ i) (or end n)) 'list) indent)
                                      :indent indent
                                      :heading (getf (first stack) :title) :level (getf (first stack) :level))))
-                       (setf pending nil i (1+ last))))
+                       (setf pending nil pending-header nil i (1+ last))))
+                    ((or (line-starts-with-ci-p line "#+header:") (line-starts-with-ci-p line "#+headers:"))
+                     (setf pending-header (header-args-merge pending-header
+                                                             (header-args-parse (subseq line (1+ (position #\: line))))))
+                     (incf i))
                     ((line-starts-with-ci-p line "#+name:")
                      (setf pending (string-trim " " (subseq (string-left-trim " " line) 7)))
                      (incf i))
@@ -207,17 +237,8 @@ indexes, and :name from a preceding #+NAME:. A :src also has :language :switches
                          (setf pending nil)
                          (setf i (+ i 1 length)))))
                     ((heading-split line keywords)
-                     (let* ((level (heading-split line keywords))
-                            (title (nth-value 3 (heading-split line keywords)))
-                            (j (1+ i)))
-                       (when (and (< j n) (planning-line-p (aref v j))) (incf j))
-                       (let ((args '()))
-                         (when (and (< j n) (string-equal (string-trim " " (aref v j)) ":PROPERTIES:"))
-                           (let ((end (or (position-if (lambda (l) (string-equal (string-trim " " l) ":END:")) v :start j) n)))
-                             (setf args (property-header-args (coerce (subseq v (1+ j) end) 'list)))))
-                         (setf stack (remove-if (lambda (entry) (>= (getf entry :level) level)) stack))
-                         (push (list :level level :title title :args args) stack)))
-                     (setf pending nil)
+                     (setf stack (heading-stack-push stack v i keywords)
+                           pending nil pending-header nil)
                      (incf i))
                     ((table-line-p line)
                      (let ((end (or (position-if-not #'table-line-p v :start i) n)))
@@ -252,13 +273,15 @@ indexes, and :name from a preceding #+NAME:. A :src also has :language :switches
                        (setf pending nil i (1+ end))))
                     ((or (blank-string-p line) (line-starts-with-ci-p line "#+")) (incf i))
                     (t (setf pending nil) (incf i))))))
-    (nreverse records)))
+    (stable-sort (append (nreverse records) (babel-scan-inline lines keywords))
+                 #'< :key (lambda (record) (getf record :begin)))))
 
 (defun babel-find-named (records name)
   "The element called NAME: a source block, else a table / list / example, else a #+RESULTS: with that name."
   (flet ((named (kinds)
            (find-if (lambda (r) (and (member (getf r :kind) kinds) (equal (getf r :name) name))) records)))
-    (or (named '(:src)) (named '(:table :list :example)) (named '(:results)))))
+    (or (named '(:src)) (named '(:table :list :example)) (named '(:results))
+        (find-if (lambda (r) (equal (getf r :name) name)) *babel-library-records*))))
 
 (defun babel-block-at (records line)
   "The source block whose lines include the 0-based LINE."
@@ -322,7 +345,7 @@ or NIL when there is nothing to do."
       (offset
        (list :replace (+ end-index 2 offset) count lines))
       (t
-       (list :insert (1+ end-index) (cons "" lines))))))
+       (list :insert (1+ end-index) (cons "" (if (rest lines) lines (append lines (list "")))))))))
 
 ;;; Values: scalars (string or number), lists, tables (lists of rows, :rule for a horizontal line)
 
@@ -489,15 +512,15 @@ or NIL when there is nothing to do."
 (defun babel-family-vars-p (family)
   (member family '(:python :js :ruby :perl :php :lua :r :powershell :lisp :shell)))
 
-(defun babel-assignment (family name value)
-  "Source text that binds NAME to VALUE."
+(defun babel-assignment (family name value &optional session)
+  "Source text that binds NAME to VALUE. In a SESSION js uses var, so that a block can run again."
   (unless (babel-family-vars-p family)
     (editor-error "Variables (:var) are not supported for ~(~A~)" family))
   (let ((literal (babel-encode family value)))
     (ecase family
       (:python (format nil "~A = ~A" name literal))
       (:ruby (format nil "~A = ~A" name literal))
-      (:js (format nil "const ~A = ~A;" name literal))
+      (:js (format nil "~A ~A = ~A;" (if session "var" "const") name literal))
       (:perl (format nil "my $~A = ~A;" name literal))
       (:php (format nil "$~A = ~A;" name literal))
       (:lua (format nil "local ~A = ~A" name literal))
@@ -555,6 +578,84 @@ ARGUMENTS being a list of strings such as \"x=1\" split at top-level commas."
       (setf end (group #\[))
       (values name arguments inside (or end (string-trim " " (subseq text (min pos (length text)))))))))
 
+;;; Live sessions: one interpreter per session, driven by a small server script that reads one request
+;;; per line ("mode<TAB>file<TAB>marker") from its standard input, runs the file in its own global state
+;;; and prints the marker when done. Mode "value" also prints the last expression as JSON after the value marker.
+
+(defparameter *babel-session-servers*
+  (list (list :python :flags '("-u" "-c") :value t :script "import sys, ast, json, traceback
+g = {'__name__': '__main__'}
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    mode, path, marker = line.rstrip('\\n').split('\\t')
+    try:
+        tree = ast.parse(open(path, encoding='utf-8').read(), path)
+        last = None
+        if mode == 'value' and tree.body and isinstance(tree.body[-1], ast.Expr):
+            last = ast.Expression(tree.body.pop().value)
+        exec(compile(tree, path, 'exec'), g)
+        if last:
+            print('%V' + json.dumps(eval(compile(last, path, 'eval'), g), default=str))
+    except Exception as e:
+        traceback.print_exception(type(e), e, e.__traceback__.tb_next)
+    print()
+    print(marker)
+    sys.stdout.flush()
+")
+        (list :js :flags '("-e") :value t :script "const vm = require('vm'), fs = require('fs');
+globalThis.require = require;
+require('readline').createInterface({input: process.stdin}).on('line', line => {
+  const [mode, path, marker] = line.split('\\t');
+  try {
+    const v = vm.runInThisContext(fs.readFileSync(path, 'utf8'), {filename: path});
+    if (mode === 'value') { const j = JSON.stringify(v); console.log('%V' + (j === undefined ? 'null' : j)); }
+  } catch (e) { console.error(e && e.stack || String(e)); }
+  console.log('\\n' + marker);
+});
+")
+        (list :ruby :flags '("-e") :value t :script "$stdout.sync = true
+require 'json'
+b = Object.new.instance_eval { binding }
+while (line = $stdin.gets)
+  mode, path, marker = line.chomp.split(9.chr)
+  begin
+    v = eval(File.read(path), b, path)
+    puts '%V' + v.to_json if mode == 'value'
+  rescue StandardError, ScriptError => e
+    $stderr.puts e.class.to_s + ': ' + e.message
+  end
+  puts
+  puts marker
+end
+")
+        (list :shell :flags '("-c") :value nil :script "while IFS=$'\\t' read -r __org_m __org_p __org_k; do source \"$__org_p\" < /dev/null; printf '\\n%s\\n' \"$__org_k\"; done
+"))
+  "How to start a live :session for a language family: the interpreter's flags before the script, whether :results value
+returns the last expression (:value), and the server SCRIPT, where %V stands for the value marker. Only these families
+get a real process; other languages replay the earlier blocks of the session.")
+
+(defun babel-replace-text (text target value)
+  "TEXT with every TARGET replaced by VALUE."
+  (with-output-to-string (out)
+    (loop :with start := 0
+          :for at := (search target text :start2 start)
+          :do (write-string text out :start start :end (or at (length text)))
+          :while at :do (write-string value out) (setf start (+ at (length target))))))
+
+(defun babel-session-request (mode file marker)
+  "The line that asks a session server to run FILE and print MARKER when done."
+  (format nil "~A~C~A~C~A~%" mode #\tab file #\tab marker))
+
+(defun babel-session-output (text marker)
+  "What a block printed: TEXT up to MARKER, without the newline the server prints in front of it."
+  (let* ((at (search marker text))
+         (end (or at (length text))))
+    (when (and (plusp end) (char= (char text (1- end)) #\newline))
+      (decf end))
+    (subseq text 0 end)))
+
 ;;; Value mode: wrap the body so that its result is printed as JSON after a marker
 
 (defparameter *babel-value-marker* "ORG-BABEL-VALUE-4c1e:")
@@ -607,7 +708,7 @@ returns (values value found); if not found the text is a literal."
                          (cons (string-trim " " (subseq spec 0 equals))
                                (if found value (literal-var-value text))))))))
 
-(defun babel-program (family args body &key bindings value session-before)
+(defun babel-program (family args body &key bindings value session-before session)
   "The program text to run: variable BINDINGS, the SESSION-BEFORE bodies, then BODY wrapped in :prologue / :epilogue
 and, when VALUE is true, in the value wrapper. Return (values text value-wrapped-p)."
   (let* ((prologue (header-arg args "prologue"))
@@ -620,7 +721,7 @@ and, when VALUE is true, in the value wrapper. Return (values text value-wrapped
          (wrapped (and value (babel-value-program family full (mapcar #'car bindings)))))
     (values (format nil "~@[~A~%~]~{~A~%~}~{~A~%~}~@[~A~%~]~A"
                     (and (eq family :php) "<?php")
-                    (loop :for (name . v) :in bindings :collect (babel-assignment family name v))
+                    (loop :for (name . v) :in bindings :collect (babel-assignment family name v session))
                     session-before
                     (and session-before (babel-print-statement family *babel-session-marker*))
                     (or wrapped full))
@@ -646,17 +747,24 @@ marker, VALUE-TEXT the text after the value marker, if any."
 
 ;;; Results
 
-(defun text-to-rows (text)
-  "Read TEXT as a table: cells are separated by tabs, or by blanks when there are no tabs."
-  (let ((tabs (find #\tab text)))
-    (mapcar (lambda (line)
-              (if tabs
-                  (loop :with from := 0
-                        :for tab := (position #\tab line :start from)
-                        :collect (string-trim " " (subseq line from tab))
-                        :while tab :do (setf from (1+ tab)))
-                  (split-words line)))
-            (trim-trailing-blank-lines (split-text-lines text)))))
+(defun text-to-rows (text &optional separator)
+  "Read TEXT as a table: cells are separated by SEPARATOR (a :sep header argument, possibly quoted), else by
+tabs, or by blanks when there are no tabs."
+  (let* ((separator (and separator (literal-var-value separator)))
+         (separator (cond ((null separator) nil)
+                          ((string= separator "\\t") (string #\tab))
+                          ((plusp (length separator)) separator)))
+         (tabs (find #\tab text)))
+    (flet ((split-at (line sep)
+             (loop :with from := 0
+                   :for at := (search sep line :start2 from)
+                   :collect (string-trim " " (subseq line from at))
+                   :while at :do (setf from (+ at (length sep))))))
+      (mapcar (lambda (line)
+                (cond (separator (split-at line separator))
+                      (tabs (split-at line (string #\tab)))
+                      (t (split-words line))))
+              (trim-trailing-blank-lines (split-text-lines text))))))
 
 (defun trim-trailing-blank-lines (lines)
   (let ((end (position-if (lambda (line) (not (blank-string-p line))) lines :from-end t)))
@@ -672,12 +780,12 @@ marker, VALUE-TEXT the text after the value marker, if any."
         (t (mapcar (lambda (x) (format nil "- ~A" (value-cell-string x))) value))))
 
 (defun format-babel-result (value args &key language name hash header)
-  "The lines to put in the buffer for a block's VALUE: the #+RESULTS: line and its content, or NIL when empty.
+  "The lines to put in the buffer for a block's VALUE: the #+RESULTS: line and its content (only the line when empty, as in Org).
 HEADER, the column names stripped from the input, is put back on a table."
   (let* ((tokens (split-words (or (header-arg args "results") "")))
          (has (lambda (token) (member token tokens :test #'string-equal)))
          (wrap (header-arg args "wrap"))
-         (value (cond ((and (stringp value) (funcall has "table")) (text-to-rows value))
+         (value (cond ((and (stringp value) (funcall has "table")) (text-to-rows value (header-arg args "sep")))
                       ((and (consp value) (not (value-table-p value)) (not (funcall has "list")))
                        (mapcar #'list value))
                       (t value)))
@@ -703,8 +811,7 @@ HEADER, the column names stripped from the input, is put back on a table."
                      ((and (consp value) (funcall has "list")) raw)
                      ((consp value) raw)
                      (t (funcall fixed)))))
-    (when body
-      (cons (format nil "#+RESULTS~@[[~A]~]:~@[ ~A~]" hash name) body))))
+    (cons (format nil "#+RESULTS~@[[~A]~]:~@[ ~A~]" hash name) body)))
 
 (defun babel-hash (string)
   "A 64-bit FNV-1a hash of STRING as 16 hex digits, for :cache."
@@ -855,5 +962,181 @@ RECORDS come from `babel-scan'; DEFAULT-BASE names the file for :tangle yes; SOU
                     :mode (or (getf entry :mode) (and (getf entry :shebang) #o755))
                     :mkdirp (getf entry :mkdirp)))
             files)))
+
+
+;;; Inline source blocks and calls:  src_python[:var x=1]{return x}   call_name[:results raw](a=1)
+
+(defun inline-bracket-end (line open)
+  "Position after the bracket that closes the one at OPEN in LINE, or NIL."
+  (let ((close (matching-close line open)))
+    (and close (1+ close))))
+
+(defun inline-brace-end (line open)
+  "Position after the } that closes the { at OPEN in LINE, or NIL."
+  (let ((depth 0))
+    (loop :for i :from open :below (length line)
+          :do (case (char line i)
+                (#\{ (incf depth))
+                (#\} (decf depth) (when (zerop depth) (return (1+ i))))))))
+
+(defun inline-babel-find (line)
+  "The inline source blocks and calls in the text LINE, in order, as plists with :kind (:inline-src or
+:inline-call), :col and :col-end (character range of the element), and for a block :language :header :code,
+for a call :text (name, header arguments and arguments as written after call_)."
+  (let ((found '()) (i 0) (n (length line)))
+    (loop :while (< i n)
+          :do (let ((src (and (or (zerop i) (not (word-char-p (char line (1- i)))))
+                              (<= (+ i 4) n) (string= "src_" line :start2 i :end2 (+ i 4))))
+                    (call (and (or (zerop i) (not (word-char-p (char line (1- i)))))
+                               (<= (+ i 5) n) (string= "call_" line :start2 i :end2 (+ i 5)))))
+                (cond
+                  (src
+                   (let* ((lang-start (+ i 4))
+                          (lang-end (or (position-if (lambda (c) (find c "[{ 	")) line :start lang-start) n))
+                          (header-end (and (< lang-end n) (char= (char line lang-end) #\[)
+                                           (inline-bracket-end line lang-end)))
+                          (brace (or header-end lang-end))
+                          (end (and (< brace n) (char= (char line brace) #\{) (> lang-end lang-start)
+                                    (inline-brace-end line brace))))
+                     (cond (end
+                            (push (list :kind :inline-src :col i :col-end end
+                                        :language (subseq line lang-start lang-end)
+                                        :header (if header-end (subseq line (1+ lang-end) (1- header-end)) "")
+                                        :code (subseq line (1+ brace) (1- end)))
+                                  found)
+                            (setf i end))
+                           (t (incf i)))))
+                  (call
+                   (let* ((name-start (+ i 5))
+                          (name-end (or (position-if (lambda (c) (find c "[( 	")) line :start name-start) n))
+                          (pos name-end) (ok nil))
+                     (when (and (> name-end name-start) (< pos n) (char= (char line pos) #\[))
+                       (let ((e (inline-bracket-end line pos))) (when e (setf pos e))))
+                     (when (and (< pos n) (char= (char line pos) #\())
+                       (let ((e (inline-bracket-end line pos)))
+                         (when e
+                           (setf pos e ok t)
+                           (when (and (< pos n) (char= (char line pos) #\[))
+                             (let ((e2 (inline-bracket-end line pos))) (when e2 (setf pos e2)))))))
+                     (cond (ok (push (list :kind :inline-call :col i :col-end pos
+                                           :text (subseq line name-start pos))
+                                     found)
+                               (setf i pos))
+                           (t (incf i)))))
+                  (t (incf i)))))
+    (nreverse found)))
+
+(defvar *org-babel-default-inline-header-args*
+  '(("results" . "replace") ("exports" . "results") ("hlines" . "yes"))
+  "Header arguments that an inline source block starts from, on top of `*org-babel-default-header-args*'.")
+
+(defun babel-scan-inline (lines keywords)
+  "The inline source blocks and calls of the Org text LINES as records like those of `babel-scan' (:kind
+:inline-src or :inline-call, :begin and :end the 0-based line, :col and :col-end), with inherited :args."
+  (let* ((v (coerce lines 'vector)) (file-args (file-header-args lines))
+         (stack '()) (records '()) (block-end nil))
+    (dotimes (i (length v))
+      (let ((line (aref v i)))
+        (cond (block-end (when (line-starts-with-ci-p line "#+end_") (setf block-end nil)))
+              ((line-starts-with-ci-p line "#+begin_") (setf block-end t))
+              ((heading-split line keywords) (setf stack (heading-stack-push stack v i keywords)))
+              ((or (line-starts-with-ci-p line "#+") (fixed-width-line-p line)))
+              (t
+               (dolist (found (inline-babel-find line))
+                 (let ((common (list :begin i :end i :col (getf found :col) :col-end (getf found :col-end)
+                                     :heading (getf (first stack) :title) :level (getf (first stack) :level))))
+                   (push (if (eq (getf found :kind) :inline-src)
+                             (let ((own (header-args-parse (getf found :header))))
+                               (append (list :kind :inline-src :name nil :language (getf found :language)
+                                             :own own :switches '()
+                                             :args (inherited-header-args file-args stack (getf found :language)
+                                                                          (header-args-merge *org-babel-default-inline-header-args* own))
+                                             :body (list (getf found :code)) :indent 0)
+                                       common))
+                             (append (list :kind :inline-call :name nil :text (getf found :text)) common))
+                         records)))))))
+    (nreverse records)))
+
+(defun inline-result-text (value)
+  "VALUE as the text inside a {{{results(...)}}} macro: scalars are =verbatim=, lists and tables a Lisp-like list."
+  (labels ((flat (x)
+             (cond ((null x) "")
+                   ((eq x :rule) "hline")
+                   ((consp x) (format nil "(~{~A~^ ~})" (mapcar #'flat x)))
+                   (t (substitute #\space #\newline (value-cell-string x))))))
+    (if (consp value)
+        (format nil "=~A=" (flat value))
+        (let ((text (string-trim '(#\space #\newline) (flat value))))
+          (if (zerop (length text)) "" (format nil "=~A=" text))))))
+
+(defun inline-replace-result (line col-end value)
+  "LINE with the {{{results(...)}}} after the inline element ending at COL-END replaced by one for VALUE (the
+macro is dropped when VALUE is empty)."
+  (let* ((text (inline-result-text value))
+         (after (subseq line col-end))
+         (skip (let ((start (position-if-not (lambda (c) (char= c #\space)) after)))
+                 (if (and start (<= (+ start 11) (length after)) (string= "{{{results(" after :start2 start :end2 (+ start 11)))
+                     (let ((close (search ")}}}" after :start2 start)))
+                       (if close (+ close 4) 0))
+                     0))))
+    (concatenate 'string (subseq line 0 col-end)
+                 (if (plusp (length text)) (format nil " {{{results(~A)}}}" text) "")
+                 (subseq after skip))))
+
+;;; Indexes in :var references:  data[1,2]  data[0:2,*]  data[-1]
+
+(defun index-dimension (items spec)
+  "Pick from the list ITEMS by SPEC: a number (negative counts from the end), a range a:b (inclusive) or *.
+Return (values selection single-p)."
+  (let* ((n (length items))
+         (spec (string-trim " " spec))
+         (colon (position #\: spec)))
+    (flet ((norm (k) (let ((k (parse-integer k :junk-allowed t))) (and k (if (minusp k) (+ n k) k)))))
+      (cond ((string= spec "*") (values items nil))
+            (colon (let ((a (or (norm (subseq spec 0 colon)) 0))
+                         (b (or (norm (subseq spec (1+ colon))) (1- n))))
+                     (values (subseq items (max 0 (min a n)) (max 0 (min (1+ b) n))) nil)))
+            (t (let ((k (norm spec)))
+                 (unless k (editor-error "Bad index ~A" spec))
+                 (values (and (< -1 k n) (list (nth k items))) t)))))))
+
+(defun value-index (value spec)
+  "The part of the table or list VALUE that the index SPEC (such as \"1,2\" or \"0:2,*\") selects."
+  (labels ((walk (v dims)
+             (cond ((or (null dims) (atom v)) v)
+                   (t (multiple-value-bind (selection single) (index-dimension v (first dims))
+                        (if single
+                            (walk (first selection) (rest dims))
+                            (mapcar (lambda (x) (walk x (rest dims))) selection)))))))
+    (walk value (split-top-level spec))))
+
+(defun reference-parse (text)
+  "Split the :var reference TEXT into (values name index): \"data[1,2]\" gives \"data\" and \"1,2\"; anything with
+a call in it, \"f(1)\", or without an index is returned whole as the name."
+  (let ((bracket (position #\[ text)))
+    (if (and bracket (plusp bracket) (not (position #\( text)) (char= (char text (1- (length text))) #\]))
+        (values (subseq text 0 bracket) (subseq text (1+ bracket) (1- (length text))))
+        (values text nil))))
+
+(defun reference-file-split (text)
+  "For a reference such as notes.org:table return (values file name), otherwise NIL."
+  (let ((at (search ".org:" text)))
+    (and at (> at 0) (< (+ at 5) (length text)) (not (find #\space (subseq text 0 at)))
+         (values (subseq text 0 (+ at 4)) (subseq text (+ at 5))))))
+
+;;; Output files
+
+(defun babel-output-file (args name hash)
+  "The file a block writes, from :file, :file-ext and :output-dir; NIL when it writes none.
+Without :file, :file-ext yields NAME (or HASH).ext."
+  (let* ((file (let ((f (header-arg args "file"))) (and f (literal-var-value f))))
+         (ext (header-arg args "file-ext"))
+         (dir (let ((d (header-arg args "output-dir"))) (and d (literal-var-value d))))
+         (file (cond (file file)
+                     (ext (format nil "~A.~A" (or name hash) ext)))))
+    (when file
+      (if (and dir (plusp (length file)) (char/= (char file 0) #\/))
+          (format nil "~A~A~A" dir (if (char= (char dir (1- (length dir))) #\/) "" "/") file)
+          file))))
 
 ;;; END pure babel-model code

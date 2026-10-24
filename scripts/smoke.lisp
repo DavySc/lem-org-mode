@@ -173,7 +173,7 @@
              (let* ((b (smoke-buffer (format nil "#+TITLE: T~%* Head~%text *bold*~%")))
                     (html (lem-org-mode::export-html (lem-org-mode::split-text-lines (lem:buffer-text b))
                                                      '("TODO" "DONE"))))
-               (list (and (search "<h2>Head</h2>" html) t) (and (search "<b>bold</b>" html) t))))
+               (list (and (search "Head</h2>" html) t) (and (search "<b>bold</b>" html) t))))
 
 (smoke-check "markdown export"
              (format nil "# T~%~%## Head~%~%text **bold**~%")
@@ -240,5 +240,10 @@
                      (handler-case (progn (lem-org-mode::run-sql :sqlcmd args "select * from nope_nope;") nil)
                        (lem:editor-error () t))))
       (smoke-say "SKIP mssql checks (set LEM_ORG_SMOKE_MSSQL to a host)")))
+
+;;; further checks, one file per area, in scripts/smoke.d/
+(dolist (file (sort (directory (merge-pathnames "scripts/smoke.d/*.lisp" *smoke-root*)) #'string< :key #'namestring))
+  (handler-case (load file)
+    (serious-condition (e) (smoke-say "FAIL loading ~A: ~A" (pathname-name file) e))))
 
 (smoke-say "DONE")

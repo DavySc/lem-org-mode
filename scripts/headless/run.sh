@@ -19,8 +19,12 @@ for what in "$@"; do
       (cd "$REPO" && sbcl --core "$DIR/lem.core" --noinform --non-interactive \
         --eval "(progn (asdf:clear-configuration) (asdf:initialize-source-registry '(:source-registry (:tree \"$DIR/cl/\") (:tree \"$DIR/lem/\") (:directory \"$REPO/\") (:directory \"/usr/share/common-lisp/systems/\") :inherit-configuration)))" \
         --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system "lem-org-mode/tests" :force t))' \
-        --eval '(sb-ext:exit :code (if (rove:run "lem-org-mode/tests" :style :dot) 0 1))' 2>&1 \
-        | sed 's/\x1b\[[0-9;]*m//g' | grep -v '^;\|^WARNING\|redefining') || status=1 ;;
+        --eval '(sb-ext:exit :code (if (rove:run "lem-org-mode/tests" :style :dot) 0 1))' > "${TMPDIR:-/tmp}/lem-org-rove.log" 2>&1
+        status=$?
+        sed 's/\x1b\[[0-9;]*m//g' "${TMPDIR:-/tmp}/lem-org-rove.log" | grep -a -v '^;\|^WARNING\|redefining'
+        # a file that does not compile or read: show the compiler's message, which the filter above removes
+        grep -a -A8 'caught ERROR' "${TMPDIR:-/tmp}/lem-org-rove.log" | head -40
+        exit $status) || status=1 ;;
     smoke)
       echo "== smoke test"
       rm -f "$REPO/scripts/smoke.log"
