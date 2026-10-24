@@ -421,3 +421,12 @@
                                              '("TODO" "DONE") "x.org")))
     (ok (equal '("a" "b") (mapcar (lambda (e) (getf e :title)) entries)))
     (ok (getf (second entries) :done))))
+
+(deftest test-vi-tab
+  (let ((buffer (make-org-buffer (lines "|a|b" "|c|d"))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode:org-mode)
+    (move-to-line (current-point) 1)
+    (lem-org-mode::org-vi-tab)
+    (ok (string= (lines "| a | b |" "| c | d |") (text-of buffer)) "Tab in an Org buffer is org-cycle (a table cell move)")
+    (ok (fboundp 'lem-org-mode::install-vi-bindings))))
