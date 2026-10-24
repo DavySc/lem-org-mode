@@ -359,13 +359,13 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
     (5 'document-header5-attribute)
     (t 'document-header6-attribute)))
 
-(defun make-heading-pattern (level)
+(defun make-heading-pattern (level &optional (keywords (initial-todo-keywords)))
   "Match a heading with exactly LEVEL stars, colouring a leading todo keyword separately."
-  (make-tm-match (format nil "^\\*{~D} (?:(~{~A~^|~})\\b)?.*$" level (initial-todo-keywords))
+  (make-tm-match (format nil "^\\*{~D} (?:(~{~A~^|~})\\b)?.*$" level keywords)
                  :name (heading-attribute level)
                  :captures (vector nil (make-tm-name 'syntax-keyword-attribute))))
 
-(defun make-tmlanguage-org ()
+(defun make-tmlanguage-org (&optional (keywords (initial-todo-keywords)))
   (make-tmlanguage
    :patterns (make-tm-patterns
               (make-tm-region "^[ \\t]*#\\+(?:begin|BEGIN)_\\w+"
@@ -392,21 +392,32 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
               (make-tm-match "(?<![\\w~])~[^~\\s](?:[^~]*[^~\\s])?~(?![\\w~])"
                              :name 'document-inline-code-attribute)
               (make-tm-match ":(?:[\\w@#%]+:)+[ \\t]*$" :name 'syntax-constant-attribute)
-              (make-heading-pattern 1)
-              (make-heading-pattern 2)
-              (make-heading-pattern 3)
-              (make-heading-pattern 4)
-              (make-heading-pattern 5)
-              (make-heading-pattern 6))))
+              (make-heading-pattern 1 keywords)
+              (make-heading-pattern 2 keywords)
+              (make-heading-pattern 3 keywords)
+              (make-heading-pattern 4 keywords)
+              (make-heading-pattern 5 keywords)
+              (make-heading-pattern 6 keywords))))
 
-(defvar *org-syntax-table*
+(defun make-org-syntax-table (&optional (keywords (initial-todo-keywords)))
   (let ((table (make-syntax-table :space-chars '(#\space #\tab #\newline)
                                   :paren-pairs '((#\( . #\))
                                                  (#\[ . #\])
                                                  (#\{ . #\}))
                                   :line-comment-string "#")))
-    (set-syntax-parser table (make-tmlanguage-org))
+    (set-syntax-parser table (make-tmlanguage-org keywords))
     table))
+
+(defvar *org-syntax-table* (make-org-syntax-table))
+
+(defvar *org-keyword-syntax-tables* (make-hash-table :test 'equal)
+  "Syntax tables made for the keyword lists that buffers declare with #+TODO:, by keyword list.")
+
+(defun org-syntax-table-for (keywords)
+  (if (equal keywords (initial-todo-keywords))
+      *org-syntax-table*
+      (or (gethash keywords *org-keyword-syntax-tables*)
+          (setf (gethash keywords *org-keyword-syntax-tables*) (make-org-syntax-table keywords)))))
 
 (define-major-mode org-mode language-mode
     (:name "Org"
@@ -418,6 +429,27 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
         (variable-value 'line-comment) "#"
         (variable-value 'insertion-line-comment) "# "
         (variable-value 'fold-region-function) 'fold-region-at-heading))
+
+(defun org-update-highlighting (&optional (buffer (current-buffer)))
+  "Colour the todo keywords that BUFFER declares with #+TODO: lines (and not only the default ones)."
+  (when (eq (buffer-major-mode buffer) 'org-mode)
+    (let ((table (org-syntax-table-for (org-keywords buffer))))
+      (unless (eq table (buffer-syntax-table buffer))
+        (setf (buffer-syntax-table buffer) table))
+      table)))
+
+(defun org-setup-buffer (&rest arguments)
+  "Mode hook: highlighting for the buffer's own keywords, refreshed when it is saved."
+  (declare (ignore arguments))
+  (let ((buffer (current-buffer)))
+    (org-update-highlighting buffer)
+    (pushnew 'org-refresh-highlighting-after-save (variable-value 'after-save-hook :buffer buffer))))
+
+(defun org-refresh-highlighting-after-save (&rest arguments)
+  (declare (ignore arguments))
+  (org-update-highlighting (current-buffer)))
+
+(add-hook *org-mode-hook* 'org-setup-buffer)
 
 (define-key *org-mode-keymap* "Tab" 'org-cycle)
 (define-key *org-mode-keymap* "C-c C-t" 'org-todo)

@@ -71,3 +71,16 @@
     (ok (search "0:00:0" (text-of buffer)))
     (lem-org-mode::org-timer-item)
     (ok (search ":: " (text-of buffer)))))
+
+(deftest test-highlighting-follows-the-buffers-keywords
+  (let ((plain (make-buffer nil :temporary t))
+        (custom (make-buffer nil :temporary t)))
+    (insert-string (buffer-point plain) (lines "* TODO a"))
+    (insert-string (buffer-point custom) (lines "#+TODO: IDEA | SHIPPED" "* IDEA a"))
+    (setf (lem:current-buffer) plain)
+    (lem:change-buffer-mode plain 'lem-org-mode:org-mode)
+    (setf (lem:current-buffer) custom)
+    (lem:change-buffer-mode custom 'lem-org-mode:org-mode)
+    (ok (eq (lem:buffer-syntax-table plain) lem-org-mode::*org-syntax-table*) "default keywords use the shared table")
+    (ok (not (eq (lem:buffer-syntax-table custom) lem-org-mode::*org-syntax-table*)) "#+TODO keywords get their own table")
+    (ok (eq (lem-org-mode::org-syntax-table-for '("IDEA" "SHIPPED")) (lem:buffer-syntax-table custom)) "tables are shared by keyword list")))
