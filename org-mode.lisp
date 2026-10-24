@@ -445,7 +445,7 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
   (declare (ignore arguments))
   (let ((buffer (current-buffer)))
     (org-update-highlighting buffer)
-    (pushnew 'org-refresh-highlighting-after-save (variable-value 'after-save-hook :buffer buffer))))
+    (add-hook (variable-value 'after-save-hook :buffer buffer) 'org-refresh-highlighting-after-save)))
 
 (defun org-refresh-highlighting-after-save (&rest arguments)
   (declare (ignore arguments))

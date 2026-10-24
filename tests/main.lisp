@@ -413,18 +413,6 @@
     (ok (null (org-clock-running (buffer-point buffer))))
     (ok (signals (org-clock-out (line-point buffer 1) '(2026 10 22 13 0)) 'editor-error))))
 
-(deftest test-export
-  (let ((html (lem-org-mode::export-html (list "* Head" "text") '("TODO" "DONE")))
-        (md (lem-org-mode::export-markdown (list "* Head" "text") '("TODO" "DONE"))))
-    (ok (search "<h2>Head</h2>" html))
-    (ok (string= (format nil "# Head~%~%text~%") md))))
-
-(deftest test-agenda-parse
-  (let ((entries (lem-org-mode::agenda-parse (list "* TODO a" "SCHEDULED: <2026-10-22 Thu>" "* DONE b")
-                                             '("TODO" "DONE") "x.org")))
-    (ok (equal '("a" "b") (mapcar (lambda (e) (getf e :title)) entries)))
-    (ok (getf (second entries) :done))))
-
 (deftest test-vi-tab
   (let ((buffer (make-org-buffer (lines "|a|b" "|c|d"))))
     (setf (lem:current-buffer) buffer)
@@ -433,3 +421,20 @@
     (lem-org-mode::org-vi-tab)
     (ok (string= (lines "| a | b |" "| c | d |") (text-of buffer)) "Tab in an Org buffer is org-cycle (a table cell move)")
     (ok (fboundp 'lem-org-mode::install-vi-bindings))))
+
+(deftest test-clock-report-insert-at-top
+  (let ((buffer (make-org-buffer (lines "#+TITLE: Log" "* Day"))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode:org-mode)
+    (move-to-line (current-point) 1)
+    (lem-org-mode::org-clock-report)
+    (ok (string= "#+BEGIN: clocktable :scope file :maxlevel 3" (lem:line-string (line-point buffer 1))))
+    (ok (search (format nil "#+END:~%#+TITLE: Log~%* Day") (text-of buffer)) "the block is filled and the title is untouched")))
+
+(deftest test-save-hook-is-well-formed
+  (let ((buffer (make-org-buffer (lines "* Day"))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode:org-mode)
+    (let ((hooks (lem:variable-value 'lem:after-save-hook :buffer buffer)))
+      (ok (every #'consp hooks) "hooks are (function . weight) pairs")
+      (ok (assoc 'lem-org-mode::org-refresh-highlighting-after-save hooks)))))

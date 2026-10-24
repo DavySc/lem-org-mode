@@ -299,10 +299,11 @@ has children with values."
 
 (define-command org-clock-report () ()
   "Insert a clock table for this file and fill it in."
-  (let ((point (current-point)))
+  (let* ((point (current-point))
+         (line (line-number-at-point point)))
     (line-start point)
     (insert-string point (format nil "#+BEGIN: clocktable :scope file :maxlevel 3~%#+END:~%"))
-    (org-dblock-update (line-point-in (current-buffer) (line-number-at-point point)))))
+    (org-dblock-update (line-point-in (current-buffer) line))))
 
 (define-command org-clock-goto () ()
   "Jump to the entry with the running clock."
