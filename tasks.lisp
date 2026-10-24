@@ -116,6 +116,7 @@ repeating tasks, the running clock and statistics cookies are looked after. Retu
            (old (heading-keyword-at heading))
            (done-new (sequences-done-p sequences new))
            (kind (todo-log-kind sequences old new)))
+      (unless (equal old new) (check-todo-dependencies heading new))
       (cond
         ((equal old new))
         ((and done-new (not (sequences-done-p sequences old)) (entry-repeats-p (entry-line-strings heading)))

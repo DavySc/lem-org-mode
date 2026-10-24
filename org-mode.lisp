@@ -152,7 +152,47 @@
            :org-todo-select
            :org-toggle-checkbox-command
            :org-update-statistics-cookies
-           :org-vi-tab))
+           :org-vi-tab
+           :*org-archive-location*
+           :*org-enforce-todo-dependencies*
+           :*org-subtree-clipboard*
+           :org-archive-subtree-command
+           :org-archive-to-archive-sibling
+           :org-backward-heading-same-level
+           :org-check-deadlines
+           :org-content
+           :org-copy-subtree-command
+           :org-cut-subtree-command
+           :org-delete-property-command
+           :org-evaluate-time-range
+           :org-forward-heading-same-level
+           :org-global-cycle
+           :org-goto
+           :org-hide-subtree
+           :org-insert-subheading
+           :org-next-visible-heading
+           :org-occur
+           :org-overview
+           :org-paste-subtree-command
+           :org-previous-visible-heading
+           :org-reset-checkbox-state-subtree
+           :org-shift-down
+           :org-shift-left
+           :org-shift-right
+           :org-shift-tab
+           :org-shift-up
+           :org-show-all
+           :org-show-subtree
+           :org-show-todo-tree
+           :org-sort
+           :org-sparse-tree
+           :org-tags-sparse-tree
+           :org-time-stamp
+           :org-time-stamp-inactive
+           :org-toggle-archive-tag-command
+           :org-toggle-heading
+           :org-toggle-ordered-property
+           :outline-up-heading))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
@@ -262,7 +302,7 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
 
 (define-key *org-mode-keymap* "Tab" 'org-cycle)
 (define-key *org-mode-keymap* "C-c C-t" 'org-todo)
-(define-key *org-mode-keymap* "Shift-Tab" 'org-table-previous-cell)
+(define-key *org-mode-keymap* "Shift-Tab" 'org-shift-tab)
 (define-key *org-mode-keymap* "M-Left" 'org-meta-left)
 (define-key *org-mode-keymap* "M-Right" 'org-meta-right)
 (define-key *org-mode-keymap* "M-Up" 'org-meta-up)
@@ -332,7 +372,7 @@ END is the start of the next heading of the same or a higher level, or the end o
   (cond ((org-table-at-point-p (current-point))
          (org-table-next-cell (current-point)))
         ((org-heading-level (current-point))
-         (fold-toggle-at-point (current-point)))
+         (org-cycle-heading (current-point)))
         (t (indent))))
 
 (defun heading-todo-keyword (text)
@@ -597,6 +637,12 @@ Return (values new-rows new-row new-column)."
 
 (defun org-table-next-cell (point)
   (org-table-edit point :next-cell))
+
+(define-command org-shift-tab () ()
+  "In a table move to the previous cell, elsewhere cycle the visibility of the whole buffer."
+  (if (org-table-at-point-p (current-point))
+      (org-table-edit (current-point) :previous-cell)
+      (org-global-cycle)))
 
 (define-command org-table-previous-cell () ()
   "Move to the previous table cell, realigning the table."
