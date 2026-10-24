@@ -380,7 +380,7 @@ td,th{border:1px solid #ccc;padding:.2em .6em}.todo{color:#c00;font-weight:bold}
 
 (defun export-to-file (buffer type function)
   "Write FUNCTION's rendering of BUFFER to a file with extension TYPE next to it, or to a new buffer when it has no file."
-  (let ((text (funcall function (split-text-lines (buffer-text buffer)) *org-todo-keywords*))
+  (let ((text (funcall function (split-text-lines (buffer-text buffer)) (org-keywords)))
         (file (buffer-filename buffer)))
     (cond (file
            (let ((target (make-pathname :type type :defaults file)))

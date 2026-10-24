@@ -2,6 +2,10 @@
   :depends-on ("lem/core")
   :serial t
   :components ((:file "org-mode")
+               (:file "timestamp")
+               (:file "tasks-model")
+               (:file "tasks")
+               (:file "planning")
                (:file "agenda")
                (:file "babel-model")
                (:file "export")
@@ -11,5 +15,8 @@
   :depends-on ("lem-org-mode" "rove")
   :components ((:module "tests"
                 :components ((:file "main")
-                               (:file "babel2"))))
+                               (:file "babel2")
+                               (:file "tasks-tests")
+                               (:file "agenda-tests")
+                               (:file "planning-tests"))))
   :perform (test-op (op c) (symbol-call :rove '#:run c)))

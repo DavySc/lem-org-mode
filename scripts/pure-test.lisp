@@ -6,6 +6,7 @@
 ;;; scratch package (with `editor-error' stubbed) and checked. Exit status 1 when a check fails.
 
 (require :asdf)
+(ignore-errors (let ((*error-output* (make-broadcast-stream)) (*standard-output* (make-broadcast-stream))) (asdf:load-system :cl-ppcre)))
 (defpackage :org-pure-test (:use :cl))
 (in-package :org-pure-test)
 
@@ -24,7 +25,7 @@
                       (inside (write-line line text))))
       (get-output-stream-string text))))
 
-(dolist (file '("org-mode.lisp" "agenda.lisp" "babel-model.lisp" "export.lisp" "babel.lisp"))
+(dolist (file '("org-mode.lisp" "timestamp.lisp" "tasks-model.lisp" "planning.lisp" "agenda.lisp" "babel-model.lisp" "export.lisp" "babel.lisp"))
   (with-input-from-string (in (pure-regions file))
     (loop :for form := (read in nil :eof) :until (eq form :eof)
           :do (let ((*error-output* (make-broadcast-stream))) (eval form)))))
@@ -119,16 +120,16 @@
 (check "entry done" '(nil t nil nil) (mapcar (lambda (e) (getf e :done)) *entries*))
 (defvar *today* (date-day 2026 10 22))
 (check "today's items, highest priority first" '("Scheduled:" "In 3 d.:" "Sched.2x:")
-       (mapcar #'car (agenda-day-items *entries* *today* *today* 14)))
-(check "deadline day" '("Deadline:") (mapcar #'car (agenda-day-items *entries* (+ *today* 3) *today* 14)))
-(check "week shape" 11 (length (agenda-week-records *entries* *today* 7 14)))
-(check "week header" "Thursday 22 October 2026" (car (first (agenda-week-records *entries* *today* 7 14))))
+       (mapcar (lambda (i) (getf i :label)) (agenda-day-items *entries* *today* *today* 14)))
+(check "deadline day" '("Deadline:") (mapcar (lambda (i) (getf i :label)) (agenda-day-items *entries* (+ *today* 3) *today* 14)))
+(check "week shape" 11 (length (agenda-week-records *entries* *today* 7 *today* 14)))
+(check "week header" "Thursday 22 October 2026  <today>" (car (first (agenda-week-records *entries* *today* 7 *today* 14))))
 (check "week item text" t
-       (let ((line (car (second (agenda-week-records *entries* *today* 7 14)))))
+       (let ((line (car (second (agenda-week-records *entries* *today* 7 *today* 14)))))
          (and (contains line "notes:") (contains line "Scheduled:") (contains line "TODO [#A] Write report :work:"))))
 (check "todo list order" '("Write report" "Pay rent" "Overdue")
        (mapcar (lambda (r) (getf (cdr r) :title)) (agenda-todo-records *entries*)))
-(check "tag search" '("Write report") (mapcar (lambda (r) (getf (cdr r) :title)) (agenda-tag-records *entries* "WORK")))
+(check "tag search inherits tags" '("Write report" "Old") (mapcar (lambda (r) (getf (cdr r) :title)) (agenda-tag-records *entries* "WORK")))
 
 ;;; export
 (check "html escape" "a &lt; b &amp; c" (html-escape "a < b & c"))

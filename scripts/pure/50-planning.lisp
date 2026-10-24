@@ -1,0 +1,25 @@
+;;; Planning: timestamps at point
+
+(check "field year" :year (timestamp-field-at "x <2026-10-22 Thu 14:30> y" 4 2))
+(check "field month" :month (timestamp-field-at "x <2026-10-22 Thu 14:30> y" 9 2))
+(check "field day" :day (timestamp-field-at "x <2026-10-22 Thu 14:30> y" 12 2))
+(check "field day name" :day (timestamp-field-at "x <2026-10-22 Thu 14:30> y" 14 2))
+(check "field hour" :hour (timestamp-field-at "x <2026-10-22 Thu 14:30> y" 18 2))
+(check "field minute" :minute (timestamp-field-at "x <2026-10-22 Thu 14:30> y" 21 2))
+(defun adj (text field delta) (timestamp-format (timestamp-adjust (timestamp-parse text) field delta)))
+(check "adjust year" "<2027-10-22 Fri>" (adj "<2026-10-22 Thu>" :year 1))
+(check "adjust month clamps" "<2026-11-30 Mon>" (adj "<2026-10-30 Fri>" :month 1))
+(check "adjust day across months" "<2026-11-01 Sun>" (adj "<2026-10-31 Sat>" :day 1))
+(check "adjust hour" "<2026-10-22 Thu 15:30>" (adj "<2026-10-22 Thu 14:30>" :hour 1))
+(check "adjust hour across midnight" "<2026-10-23 Fri 00:30>" (adj "<2026-10-22 Thu 23:30>" :hour 1))
+(check "adjust minute in steps of five" "<2026-10-22 Thu 14:25>" (adj "<2026-10-22 Thu 14:30>" :minute -1))
+(check "adjust hour of a date-only timestamp moves the day" "<2026-10-21 Wed>" (adj "<2026-10-22 Thu>" :hour -1))
+(check "adjust keeps repeater" "<2026-10-23 Fri +1w>" (adj "<2026-10-22 Thu +1w>" :day 1))
+(check "range duration days and time" "2d 3:30" (timestamp-range-duration (timestamp-parse "<2026-10-22 Thu 10:00>") (timestamp-parse "<2026-10-24 Sat 13:30>")))
+(check "range duration within a day" "1:30" (timestamp-range-duration (timestamp-parse "<2026-10-22 Thu 10:00>") (timestamp-parse "<2026-10-22 Thu 11:30>")))
+(check "range duration dates only" "3d " (timestamp-range-duration (timestamp-parse "<2026-10-22 Thu>") (timestamp-parse "<2026-10-25 Sun>")))
+(check "range line" "<2026-10-22 Thu 10:00>--<2026-10-22 Thu 11:30> => 1:30"
+       (line-with-range-duration "<2026-10-22 Thu 10:00>--<2026-10-22 Thu 11:30>"))
+(check "range line replaces the old result" "<2026-10-22 Thu 10:00>--<2026-10-22 Thu 11:30> => 1:30"
+       (line-with-range-duration "<2026-10-22 Thu 10:00>--<2026-10-22 Thu 11:30> => 9:99"))
+(check "no range" "<2026-10-22 Thu>" (line-with-range-duration "<2026-10-22 Thu>"))

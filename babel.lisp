@@ -254,7 +254,7 @@ interpreter, for example python on Windows.")
       (if (and cached (eql (first cached) (file-write-date path)))
           (values (second cached) (third cached))
           (let* ((lines (uiop:read-file-lines path))
-                 (records (babel-scan lines *org-todo-keywords*)))
+                 (records (babel-scan lines (org-keywords))))
             (setf (gethash (namestring path) *babel-file-cache*) (list (file-write-date path) records lines))
             (values records lines))))))
 
@@ -435,7 +435,7 @@ When :cache yes and the hash equals EXISTING-HASH nothing is run and the value i
 
 (define-command org-babel-lob-ingest () ()
   "Add the named source blocks of this buffer to the Library of Babel."
-  (let ((records (named-source-records (babel-scan (buffer-lines (current-buffer)) *org-todo-keywords*))))
+  (let ((records (named-source-records (babel-scan (buffer-lines (current-buffer)) (org-keywords)))))
     (dolist (record records)
       (setf *babel-library-ingested*
             (cons record (remove (getf record :name) *babel-library-ingested*
@@ -491,7 +491,7 @@ titled NAME. A #+CALL: passes its own line and the name of the block it calls. R
 (defun babel-record-at-point (buffer point)
   "Return (values records record) for the block, call or inline element on POINT's line."
   (babel-library-sync)
-  (let* ((records (babel-scan (buffer-lines buffer) *org-todo-keywords*))
+  (let* ((records (babel-scan (buffer-lines buffer) (org-keywords)))
          (line (1- (line-number-at-point point)))
          (column (point-charpos point)))
     (values records (or (babel-block-at records line) (babel-call-at records line)
@@ -558,7 +558,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
   (babel-library-sync)
   (let ((count 0))
     (loop :for k :from 0
-          :do (let* ((records (babel-scan (buffer-lines buffer) *org-todo-keywords*))
+          :do (let* ((records (babel-scan (buffer-lines buffer) (org-keywords)))
                      (limit (funcall end-line-function))
                      (targets (remove-if-not (lambda (r) (and (member (getf r :kind) '(:src :call))
                                                               (<= start-line (getf r :begin))
@@ -596,7 +596,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
 
 (defun babel-blocks (buffer)
   (remove-if-not (lambda (r) (eq (getf r :kind) :src))
-                 (babel-scan (buffer-lines buffer) *org-todo-keywords*)))
+                 (babel-scan (buffer-lines buffer) (org-keywords))))
 
 (define-command org-babel-next-src-block () ()
   "Move to the next source block."
@@ -615,7 +615,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
 (define-command org-babel-goto-named-src-block () ()
   "Move to the block, table, list or result called NAME."
   (let* ((name (prompt-for-string "Name: "))
-         (record (babel-find-named (babel-scan (buffer-lines (current-buffer)) *org-todo-keywords*) name)))
+         (record (babel-find-named (babel-scan (buffer-lines (current-buffer)) (org-keywords)) name)))
     (unless record (editor-error "Nothing is called ~A" name))
     (move-to-line (current-point) (1+ (getf record :begin)))))
 
@@ -689,7 +689,7 @@ top to bottom, rereading the buffer after each since results move later lines. R
   "Write the source blocks that have a :tangle argument to their files, next to the buffer."
   (let* ((buffer (current-buffer))
          (file (buffer-filename buffer))
-         (plan (babel-tangle-plan (babel-scan (buffer-lines buffer) *org-todo-keywords*)
+         (plan (babel-tangle-plan (babel-scan (buffer-lines buffer) (org-keywords))
                                   (if file (pathname-name file) (buffer-name buffer))
                                   (if file (file-namestring file) (buffer-name buffer)))))
     (unless plan
@@ -748,7 +748,7 @@ Finish with C-c ' (write back) or C-c C-k (discard)."
   "Copy the text of the edit buffer EDIT into the source block it came from. Return the Org buffer."
   (destructuring-bind (origin begin language indent) (src-edit-origin edit)
     (let* ((body (trim-trailing-blank-lines (split-text-lines (buffer-text edit))))
-           (records (babel-scan (buffer-lines origin) *org-todo-keywords*))
+           (records (babel-scan (buffer-lines origin) (org-keywords)))
            (record (find-if (lambda (r) (and (eq (getf r :kind) :src) (= (getf r :begin) begin))) records)))
       (unless (and record (equal (getf record :language) language))
         (editor-error "The source block moved or changed; copy your text and edit the block again"))

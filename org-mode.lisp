@@ -8,6 +8,15 @@
            :org-heading-level
            :org-subtree-bounds
            :org-cycle-todo
+           :org-todo-change
+           :org-todo-step
+           :org-add-note
+           :org-update-cookies
+           :org-update-all-cookies
+           :*org-log-done*
+           :*org-log-into-drawer*
+           :*org-log-repeat*
+           :*org-todo-repeat-to-state*
            :org-shift-subtree
            :org-move-subtree
            :org-table-format-rows
@@ -55,11 +64,138 @@
            :org-edit-src-exit
            :org-edit-src-abort
            :*org-babel-default-header-args*
-           :*org-babel-confirm-evaluate*))
+           :*org-babel-confirm-evaluate*
+           :*org-agenda-custom-commands*
+           :*org-agenda-grid-times*
+           :*org-agenda-skip-done*
+           :*org-agenda-start-on-weekday*
+           :*org-agenda-use-time-grid*
+           :*org-babel-comment-prefixes*
+           :*org-babel-default-inline-header-args*
+           :*org-priority-default*
+           :*org-priority-highest*
+           :*org-priority-lowest*
+           :*org-sql-timeout*
+           :*org-stuck-projects*
+           :*org-syntax-table*
+           :*org-tags-exclude-from-inheritance*
+           :*org-todo-config*
+           :org-add-note-command
+           :org-agenda
+           :org-agenda-add-note
+           :org-agenda-clock-in
+           :org-agenda-clock-out
+           :org-agenda-day
+           :org-agenda-day-view
+           :org-agenda-deadline
+           :org-agenda-earlier
+           :org-agenda-file-to-front
+           :org-agenda-filter
+           :org-agenda-filter-clear
+           :org-agenda-fortnight-view
+           :org-agenda-goto
+           :org-agenda-goto-today
+           :org-agenda-later
+           :org-agenda-list-stuck-projects
+           :org-agenda-log-mode
+           :org-agenda-month-view
+           :org-agenda-next-item
+           :org-agenda-previous-item
+           :org-agenda-priority-down
+           :org-agenda-priority-up
+           :org-agenda-quit
+           :org-agenda-redo
+           :org-agenda-save-buffers
+           :org-agenda-schedule
+           :org-agenda-search
+           :org-agenda-set-effort
+           :org-agenda-set-tags
+           :org-agenda-tags-todo
+           :org-agenda-todo
+           :org-agenda-todo-keyword
+           :org-agenda-week-view
+           :org-agenda-year-view
+           :org-clock-cancel-command
+           :org-clock-in-command
+           :org-clock-out-command
+           :org-ctrl-c-ctrl-c
+           :org-cycle
+           :org-deadline
+           :org-demote-subtree
+           :org-insert-heading
+           :org-insert-todo-heading
+           :org-meta-down
+           :org-meta-left
+           :org-meta-return
+           :org-meta-right
+           :org-meta-up
+           :org-move-subtree-down
+           :org-move-subtree-up
+           :org-priority
+           :org-priority-down
+           :org-priority-up
+           :org-promote-subtree
+           :org-remove-file
+           :org-schedule
+           :org-set-effort-command
+           :org-set-property-command
+           :org-set-tags-command
+           :org-table-align
+           :org-table-delete-column
+           :org-table-delete-row
+           :org-table-insert-column
+           :org-table-insert-hline
+           :org-table-insert-row
+           :org-table-previous-cell
+           :org-todo
+           :org-todo-previous
+           :org-todo-select
+           :org-toggle-checkbox-command
+           :org-update-statistics-cookies
+           :org-vi-tab))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
-  "Keywords that `org-todo' cycles through. The first one starts a task and the last one finishes it.")
+  "The TODO keywords. A list of strings is one sequence, finished by the last keyword or by those after a \"|\":
+(\"TODO\" \"NEXT\" \"|\" \"DONE\" \"CANCELED\"). A list of lists gives several sequences. A keyword may carry a key
+and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override this for that buffer.")
+
+(defvar *org-todo-config* nil
+  "When non-NIL, the keyword sequences in effect (bound by commands that work on a buffer other than the current one).")
+
+(defun initial-todo-keywords ()
+  "The keywords of `*org-todo-keywords*' as a flat list (used while this file loads, before tasks-model.lisp)."
+  (labels ((flat (x) (cond ((stringp x) (list x)) ((consp x) (mapcan #'flat x)))))
+    (loop :for word :in (flat *org-todo-keywords*)
+          :unless (string= word "|")
+            :collect (subseq word 0 (position #\( word)))))
+
+(defun buffer-todo-sequences (buffer)
+  "The keyword sequences of BUFFER: its #+TODO: lines, else `*org-todo-keywords*'. Cached until the buffer changes."
+  (let ((cache (buffer-value buffer 'todo-sequences-cache))
+        (tick (buffer-modified-tick buffer)))
+    (if (and cache (eql (first cache) tick) (eq (second cache) *org-todo-keywords*))
+        (third cache)
+        (let ((sequences (todo-sequences-from-lines
+                          (split-text-lines (buffer-text buffer))
+                          (todo-sequences-from-setting *org-todo-keywords*))))
+          (setf (buffer-value buffer 'todo-sequences-cache) (list tick *org-todo-keywords* sequences))
+          sequences))))
+
+(defun org-todo-sequences (&optional (buffer (current-buffer)))
+  (or *org-todo-config* (buffer-todo-sequences buffer)))
+
+(defun org-keywords (&optional (buffer (current-buffer)))
+  "All TODO keywords in effect, as a flat list."
+  (sequences-keywords (org-todo-sequences buffer)))
+
+(defun org-done-keyword-p (keyword &optional (buffer (current-buffer)))
+  (sequences-done-p (org-todo-sequences buffer) keyword))
+
+(defmacro with-todo-buffer ((point) &body body)
+  "Run BODY with the keyword sequences of the buffer of POINT."
+  `(let ((*org-todo-config* (buffer-todo-sequences (point-buffer ,point))))
+     ,@body))
 
 (defun heading-attribute (level)
   (case level
@@ -72,7 +208,7 @@
 
 (defun make-heading-pattern (level)
   "Match a heading with exactly LEVEL stars, colouring a leading todo keyword separately."
-  (make-tm-match (format nil "^\\*{~D} (?:(~{~A~^|~})\\b)?.*$" level *org-todo-keywords*)
+  (make-tm-match (format nil "^\\*{~D} (?:(~{~A~^|~})\\b)?.*$" level (initial-todo-keywords))
                  :name (heading-attribute level)
                  :captures (vector nil (make-tm-name 'syntax-keyword-attribute))))
 
@@ -138,15 +274,11 @@
 (define-key *org-mode-keymap* "C-c C-c" 'org-ctrl-c-ctrl-c)
 (define-key *org-mode-keymap* "C-c -" 'org-table-insert-hline)
 (define-key *org-mode-keymap* "M-Return" 'org-meta-return)
-(define-key *org-mode-keymap* "Shift-Up" 'org-priority-up)
-(define-key *org-mode-keymap* "Shift-Down" 'org-priority-down)
 (define-key *org-mode-keymap* "C-c C-s" 'org-schedule)
 (define-key *org-mode-keymap* "C-c C-d" 'org-deadline)
 (define-key *org-mode-keymap* "C-c C-q" 'org-set-tags-command)
 (define-key *org-mode-keymap* "C-c C-x p" 'org-set-property-command)
-(define-key *org-mode-keymap* "C-c a a" 'org-agenda-week)
-(define-key *org-mode-keymap* "C-c a t" 'org-agenda-todo-list)
-(define-key *org-mode-keymap* "C-c a m" 'org-agenda-tags)
+(define-key *org-mode-keymap* "C-c a" 'org-agenda)
 (define-key *org-mode-keymap* "C-c C-e h" 'org-export-html)
 (define-key *org-mode-keymap* "C-c C-e m" 'org-export-markdown)
 (define-key *org-mode-keymap* "C-c C-v t" 'org-babel-tangle)
@@ -203,27 +335,21 @@ END is the start of the next heading of the same or a higher level, or the end o
          (fold-toggle-at-point (current-point)))
         (t (indent))))
 
-(defun next-todo-keyword (current)
-  (if current
-      (second (member current *org-todo-keywords* :test #'string=))
-      (first *org-todo-keywords*)))
-
 (defun heading-todo-keyword (text)
   "Return the todo keyword that TEXT, the heading line after its stars, starts with."
   (find-if (lambda (keyword)
              (and (uiop:string-prefix-p keyword text)
                   (or (= (length text) (length keyword))
                       (char= (char text (length keyword)) #\space))))
-           *org-todo-keywords*))
+           (org-keywords)))
 
-(defun org-cycle-todo (point)
-  "Advance the todo keyword of the heading at POINT: none, TODO, DONE, none."
+(defun org-set-todo-keyword (point next)
+  "Replace the todo keyword of the heading at POINT by NEXT (a keyword or NIL). Return the old keyword."
   (let ((level (org-heading-level point)))
     (unless level
       (editor-error "Not on a heading"))
     (let* ((text (subseq (line-string point) (1+ level)))
-           (current (heading-todo-keyword text))
-           (next (next-todo-keyword current)))
+           (current (heading-todo-keyword text)))
       (with-point ((start point))
         (character-offset (line-start start) (1+ level))
         (when current
@@ -235,13 +361,20 @@ END is the start of the next heading of the same or a higher level, or the end o
         (when next
           (insert-string start (if (or current (zerop (length text)))
                                    next
-                                   (format nil "~A " next))))))))
+                                   (format nil "~A " next)))))
+      current)))
 
-(define-command org-todo () ()
-  "Cycle the todo keyword of the current heading."
-  (org-cycle-todo (current-point))
-  (org-todo-update-closed (current-point))
-  (org-clock-stop-for-done (current-point)))
+(defun org-cycle-todo (point &optional (direction 1))
+  "Advance the todo keyword of the heading at POINT through its sequence: none, TODO, DONE, none.
+A negative DIRECTION goes backward. Return (values old new)."
+  (let ((level (org-heading-level point)))
+    (unless level
+      (editor-error "Not on a heading"))
+    (with-todo-buffer (point)
+      (let* ((current (heading-todo-keyword (subseq (line-string point) (1+ level))))
+             (next (sequences-next (org-todo-sequences) current direction)))
+        (org-set-todo-keyword point next)
+        (values current next)))))
 
 (defun subtree-headings (start end)
   "Return (line-offset . level) for every heading line in [START, END), offsets counted from START."
@@ -793,7 +926,8 @@ CHECKBOX is the character inside the brackets, or NIL."
   (let ((new (list-toggle-checkbox (line-string point))))
     (unless new
       (editor-error "Not on a list item"))
-    (replace-lines (line-start (copy-point point :temporary)) 1 (list new))))
+    (replace-lines (line-start (copy-point point :temporary)) 1 (list new))
+    (org-update-cookies point)))
 
 (define-command org-toggle-checkbox-command () ()
   "Toggle the checkbox of the current list item."
@@ -805,6 +939,10 @@ CHECKBOX is the character inside the brackets, or NIL."
 ;;; optional planning line (SCHEDULED, DEADLINE, CLOSED) and an optional :PROPERTIES: drawer.
 
 ;;; BEGIN pure heading code
+
+(defvar *org-priority-highest* #\A "The highest priority letter.")
+(defvar *org-priority-lowest* #\C "The lowest priority letter.")
+(defvar *org-priority-default* #\B "The priority of an entry that has none, for sorting.")
 
 (defun heading-split (line keywords)
   "Return (values level todo priority title tags) of the heading LINE, or NIL when it is not a heading."
@@ -868,7 +1006,8 @@ CHECKBOX is the character inside the brackets, or NIL."
   "Move the priority of the heading LINE through none, C, B, A (DELTA +1, up) or the reverse (DELTA -1)."
   (multiple-value-bind (level todo priority title tags) (heading-split line keywords)
     (unless level (editor-error "Not on a heading"))
-    (let* ((ring '(nil #\C #\B #\A))
+    (let* ((ring (cons nil (loop :for code :from (char-code *org-priority-lowest*) :downto (char-code *org-priority-highest*)
+                                 :collect (code-char code))))
            (next (nth (mod (+ (or (position priority ring) 0) delta) (length ring)) ring)))
       (heading-join level todo next title tags))))
 
@@ -1009,10 +1148,10 @@ CHECKBOX is the character inside the brackets, or NIL."
     (replace-lines heading 1 (list (funcall function (line-string heading))))))
 
 (defun org-set-tags (point tags)
-  (org-edit-heading-line point (lambda (line) (heading-set-tags line *org-todo-keywords* tags))))
+  (org-edit-heading-line point (lambda (line) (heading-set-tags line (org-keywords) tags))))
 
 (defun org-cycle-priority (point delta)
-  (org-edit-heading-line point (lambda (line) (heading-cycle-priority line *org-todo-keywords* delta))))
+  (org-edit-heading-line point (lambda (line) (heading-cycle-priority line (org-keywords) delta))))
 
 (defun org-set-planning (point keyword stamp)
   (org-edit-head point (lambda (head) (head-set-planning head keyword stamp))))
@@ -1023,15 +1162,14 @@ CHECKBOX is the character inside the brackets, or NIL."
 (defun org-todo-update-closed (point)
   "Add a CLOSED timestamp when the entry at POINT is in its last todo state, and remove it otherwise."
   (let* ((heading (heading-point point))
-         (done (equal (nth-value 1 (heading-split (line-string heading) *org-todo-keywords*))
-                      (car (last *org-todo-keywords*)))))
+         (done (org-done-keyword-p (nth-value 1 (heading-split (line-string heading) (org-keywords))))))
     (org-set-planning point "CLOSED" (and done (multiple-value-call #'format-timestamp (today))))))
 
 (define-command org-set-tags-command () ()
   "Set the tags of the current heading. Enter them as work:home or :work:home:."
   (let ((heading (heading-point (current-point))))
     (multiple-value-bind (level todo priority title tags)
-        (heading-split (line-string heading) *org-todo-keywords*)
+        (heading-split (line-string heading) (org-keywords))
       (declare (ignore todo priority title))
       (unless level (editor-error "Not on a heading"))
       (org-set-tags (current-point)
@@ -1046,21 +1184,24 @@ CHECKBOX is the character inside the brackets, or NIL."
   "Lower the priority of the current heading: none, A, B, C, none."
   (org-cycle-priority (current-point) -1))
 
-(defun prompt-for-planning (keyword)
-  (multiple-value-bind (year month day) (today)
-    (multiple-value-bind (y m d)
-        (parse-date-input (prompt-for-string (format nil "~A date (YYYY-MM-DD, +3d, +1w; empty for today): "
-                                                    (string-capitalize keyword)))
-                          year month day)
-      (org-set-planning (current-point) keyword (format-timestamp y m d (string/= keyword "CLOSED"))))))
+(defun prompt-for-planning (point keyword)
+  "Ask for a date (and optionally a time) and set the planning KEYWORD of the entry at POINT."
+  (let* ((today-day (multiple-value-call #'date-day (today)))
+         (input (prompt-for-string (format nil "~A (date, e.g. +3d, fri, 2026-10-22 14:30; empty for today): "
+                                           (string-capitalize keyword)))))
+    (multiple-value-bind (day hour minute end-hour end-minute) (date-input-parse input today-day)
+      (let ((ts (timestamp-with-day (list :active (string/= keyword "CLOSED") :hour hour :minute minute
+                                          :end-hour end-hour :end-minute end-minute)
+                                    day)))
+        (org-set-planning point keyword (timestamp-format ts))))))
 
 (define-command org-schedule () ()
   "Set the SCHEDULED date of the current entry."
-  (prompt-for-planning "SCHEDULED"))
+  (prompt-for-planning (current-point) "SCHEDULED"))
 
 (define-command org-deadline () ()
   "Set the DEADLINE date of the current entry."
-  (prompt-for-planning "DEADLINE"))
+  (prompt-for-planning (current-point) "DEADLINE"))
 
 (define-command org-set-property-command () ()
   "Set a property in the :PROPERTIES: drawer of the current entry."
@@ -1218,8 +1359,7 @@ Return the second value of FUNCTION."
         (heading (enclosing-heading point)))
     (when (and running heading
                (point= heading (enclosing-heading running))
-               (equal (nth-value 1 (heading-split (line-string heading) *org-todo-keywords*))
-                      (car (last *org-todo-keywords*))))
+               (org-done-keyword-p (nth-value 1 (heading-split (line-string heading) (org-keywords)))))
       (org-clock-out point (now)))))
 
 (define-command org-clock-in-command () ()
