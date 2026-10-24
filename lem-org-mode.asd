@@ -15,6 +15,8 @@
                (:file "agenda")
                (:file "babel-model")
                (:file "export")
+               (:file "export-more")
+               (:file "publish")
                (:file "babel")))
 
 (defsystem "lem-org-mode/tests"
@@ -29,5 +31,7 @@
                                (:file "capture-tests")
                                (:file "links-tests")
                                (:file "tables-tests")
-                               (:file "editing-tests"))))
+                               (:file "editing-tests")
+                               (:file "export-tests")
+                               (:file "publish-tests"))))
   :perform (test-op (op c) (symbol-call :rove '#:run c)))

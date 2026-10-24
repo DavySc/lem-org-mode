@@ -717,6 +717,12 @@ letters/digits, or *."
         (:coderef (values :none nil))
         (:unsupported (values :none nil))))))
 
+(defun footnote-text (number)
+  "The definition of footnote NUMBER rendered for LaTeX, or an empty string."
+  (let* ((note (find number (export-ctx-footnotes *export-ctx*) :key #'second))
+         (text (and note (third note))))
+    (export-inline (if (listp text) (format nil "~{~A~^ ~}" text) (or text "")) :latex)))
+
 (defun footnote-number (label definition)
   "The number of the footnote LABEL in the export in progress, adding it on first use. Anonymous footnotes
 (LABEL empty) always get a new one; DEFINITION is the inline text, if any."
@@ -769,12 +775,12 @@ letters/digits, or *."
                 (:ascii (format nil "[~A]" url))
                 (:latex (format nil "\\includegraphics[width=.9\\linewidth]{~A}" url))
                 (:org (format nil "[[~A]]" url)))))
-    (:footnote-ref (destructuring-bind (number) arguments
+    (:footnote-ref (destructuring-bind (number &optional text) arguments
                      (ecase backend
                        (:html (format nil "<sup><a id=\"fnr.~D\" class=\"footref\" href=\"#fn.~D\" role=\"doc-backlink\">~D</a></sup>" number number number))
                        (:markdown (format nil "[^~D]" number))
                        (:ascii (format nil "[~D]" number))
-                       (:latex (format nil "\\footnotemark[~D]" number))
+                       (:latex (if text (format nil "\\footnote{~A}" text) (format nil "\\footnotemark[~D]" number)))
                        (:org (format nil "[fn:~D]" number)))))
     (:sub (destructuring-bind (body) arguments
             (ecase backend (:html (format nil "<sub>~A</sub>" body)) (:markdown (format nil "<sub>~A</sub>" body))
@@ -876,7 +882,9 @@ footnote references, entities, sub- and superscripts, timestamps, LaTeX fragment
                        (flush)
                        (destructuring-bind (start end label definition) (footnote-reference-at string i)
                          (declare (ignore start))
-                         (emit (inline-emit format :footnote-ref (footnote-number label definition)))
+                         (let ((number (footnote-number label definition)))
+                           (emit (inline-emit format :footnote-ref number
+                                              (and (eq format :latex) (footnote-text number)))))
                          (setf i end)))
                       ;; timestamps
                       ((and (find c "<[") (timestamp-parse string i) (option :timestamp)

@@ -65,6 +65,14 @@
            :org-edit-src-abort
            :*org-babel-default-header-args*
            :org-capture-string
+           :export-html
+           :export-markdown
+           :export-ascii
+           :export-latex
+           :export-org
+           :export-icalendar
+           :org-publish-project
+           :org-publish-all-projects
            :org-refile
            :org-archive-subtree
            :org-copy-subtree
@@ -265,7 +273,33 @@
            :org-timer-pause-or-continue
            :org-timer-start
            :org-timer-stop
-           :org-toggle-comment))
+           :org-toggle-comment
+           :*org-ascii-text-width*
+           :*org-export-creator*
+           :*org-export-exclude-tags*
+           :*org-export-headline-levels*
+           :*org-export-html-head*
+           :*org-export-mathjax*
+           :*org-export-reader*
+           :*org-export-select-tags*
+           :*org-export-with-section-numbers*
+           :*org-export-with-toc*
+           :*org-icalendar-include-todo*
+           :*org-latex-class*
+           :*org-latex-packages*
+           :org-export-ascii
+           :org-export-dispatch
+           :org-export-html-subtree
+           :org-export-latex
+           :org-export-org
+           :org-icalendar-combine-agenda-files
+           :org-icalendar-export-to-ics
+           :*org-publish-project-alist*
+           :*org-publish-timestamp-directory*
+           :org-publish
+           :org-publish-all
+           :org-publish-current-file
+           :org-publish-current-project))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
