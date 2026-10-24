@@ -247,7 +247,25 @@
            :org-table-recalculate-buffer-command
            :org-table-recalculate-command
            :org-table-sum
-           :org-update-all-dblocks-command))
+           :org-update-all-dblocks-command
+           :*org-structure-template-alist*
+           :*org-timer-paused*
+           :*org-timer-start*
+           :org-ctrl-c-dash
+           :org-cycle-list-bullet
+           :org-insert-drawer
+           :org-insert-structure-template-command
+           :org-return
+           :org-shift-meta-down
+           :org-shift-meta-left
+           :org-shift-meta-right
+           :org-shift-meta-up
+           :org-timer
+           :org-timer-item
+           :org-timer-pause-or-continue
+           :org-timer-start
+           :org-timer-stop
+           :org-toggle-comment))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
@@ -374,10 +392,10 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
 (define-key *org-mode-keymap* "M-Right" 'org-meta-right)
 (define-key *org-mode-keymap* "M-Up" 'org-meta-up)
 (define-key *org-mode-keymap* "M-Down" 'org-meta-down)
-(define-key *org-mode-keymap* "M-Shift-Left" 'org-table-delete-column)
-(define-key *org-mode-keymap* "M-Shift-Right" 'org-table-insert-column)
-(define-key *org-mode-keymap* "M-Shift-Up" 'org-table-delete-row)
-(define-key *org-mode-keymap* "M-Shift-Down" 'org-table-insert-row)
+(define-key *org-mode-keymap* "M-Shift-Left" 'org-shift-meta-left)
+(define-key *org-mode-keymap* "M-Shift-Right" 'org-shift-meta-right)
+(define-key *org-mode-keymap* "M-Shift-Up" 'org-shift-meta-up)
+(define-key *org-mode-keymap* "M-Shift-Down" 'org-shift-meta-down)
 (define-key *org-mode-keymap* "C-c C-c" 'org-ctrl-c-ctrl-c)
 (define-key *org-mode-keymap* "C-c -" 'org-table-insert-hline)
 (define-key *org-mode-keymap* "M-Return" 'org-meta-return)
@@ -638,6 +656,10 @@ Return (values new-rows new-row new-column)."
       (:move-row-down (progn (unless (< (1+ row) (length rows)) (editor-error "Cannot move the row further"))
                              (values (table-swap rows row (1+ row)) (1+ row) column)))
       (:insert-hline (values (table-insert-at rows (1+ row) :rule) row column))
+      (:next-row (let ((next (table-rule-index rows row 1)))
+                   (if next
+                       (values rows next column)
+                       (values (append rows (list (table-new-row count))) (length rows) column))))
       (:align (values rows row column))
       (:next-cell
        (cond ((< (1+ column) count) (values rows row (1+ column)))
@@ -739,21 +761,45 @@ Return (values new-rows new-row new-column)."
   "Insert a horizontal line below the current row."
   (org-table-edit (current-point) :insert-hline))
 
-(defmacro define-meta-command (name table-operation heading-form doc)
+(defmacro define-meta-command (name table-operation item-form heading-form doc)
   `(define-command ,name () ()
      ,doc
-     (if (org-table-at-point-p (current-point))
-         (org-table-edit (current-point) ,table-operation)
-         ,heading-form)))
+     (cond ((org-table-at-point-p (current-point)) (org-table-edit (current-point) ,table-operation))
+           ((org-item-at-point-p (current-point)) ,item-form)
+           (t ,heading-form))))
 
-(define-meta-command org-meta-left :move-column-left (org-shift-subtree (current-point) -1)
-  "In a table move the column left, otherwise promote the subtree.")
-(define-meta-command org-meta-right :move-column-right (org-shift-subtree (current-point) 1)
-  "In a table move the column right, otherwise demote the subtree.")
-(define-meta-command org-meta-up :move-row-up (org-move-subtree (current-point) :up)
-  "In a table move the row up, otherwise move the subtree up.")
-(define-meta-command org-meta-down :move-row-down (org-move-subtree (current-point) :down)
-  "In a table move the row down, otherwise move the subtree down.")
+(define-meta-command org-meta-left :move-column-left (org-indent-item (current-point) -2) (org-shift-subtree (current-point) -1)
+  "In a table move the column left, on a list item outdent it, otherwise promote the subtree.")
+(define-meta-command org-meta-right :move-column-right (org-indent-item (current-point) 2) (org-shift-subtree (current-point) 1)
+  "In a table move the column right, on a list item indent it, otherwise demote the subtree.")
+(define-meta-command org-meta-up :move-row-up (org-move-item (current-point) -1) (org-move-subtree (current-point) :up)
+  "In a table move the row up, on a list item move the item up, otherwise move the subtree up.")
+(define-meta-command org-meta-down :move-row-down (org-move-item (current-point) 1) (org-move-subtree (current-point) :down)
+  "In a table move the row down, on a list item move the item down, otherwise move the subtree down.")
+
+(define-command org-shift-meta-left () ()
+  "In a table delete the column, on a list item outdent it with its sub-items, otherwise promote the subtree."
+  (cond ((org-table-at-point-p (current-point)) (org-table-edit (current-point) :delete-column))
+        ((org-item-at-point-p (current-point)) (org-indent-item (current-point) -2))
+        (t (org-shift-subtree (current-point) -1))))
+
+(define-command org-shift-meta-right () ()
+  "In a table insert a column, on a list item indent it with its sub-items, otherwise demote the subtree."
+  (cond ((org-table-at-point-p (current-point)) (org-table-edit (current-point) :insert-column))
+        ((org-item-at-point-p (current-point)) (org-indent-item (current-point) 2))
+        (t (org-shift-subtree (current-point) 1))))
+
+(define-command org-shift-meta-up () ()
+  "In a table delete the row, otherwise move the subtree up."
+  (if (org-table-at-point-p (current-point))
+      (org-table-edit (current-point) :delete-row)
+      (org-move-subtree (current-point) :up)))
+
+(define-command org-shift-meta-down () ()
+  "In a table insert a row, otherwise move the subtree down."
+  (if (org-table-at-point-p (current-point))
+      (org-table-edit (current-point) :insert-row)
+      (org-move-subtree (current-point) :down)))
 
 ;;; Under lem-vi-mode the normal-state keymap outranks the mode keymap, and it binds Tab to a jump. Take Tab
 ;;; over in that keymap; outside Org buffers it still does what vi does.
@@ -960,6 +1006,16 @@ CHECKBOX is the character inside the brackets, or NIL."
                                   line))))))
             lines)))
 
+(defun list-line-p (string)
+  (and (plusp (length (string-trim " " string)))
+       (not (org-heading-string-p string))
+       (or (list-item-parse string)
+           (char= (char string 0) #\space))))
+
+(defun org-heading-string-p (string)
+  (let ((stars (position-if-not (lambda (c) (char= c #\*)) string)))
+    (and stars (plusp stars) (char= (char string stars) #\space))))
+
 ;;; END pure list code
 
 (defun item-block-start (point)
@@ -970,16 +1026,6 @@ CHECKBOX is the character inside the brackets, or NIL."
           :while (and (line-offset q -1) (list-line-p (line-string q)))
           :do (move-point p q))
     p))
-
-(defun list-line-p (string)
-  (and (plusp (length (string-trim " " string)))
-       (not (org-heading-string-p string))
-       (or (list-item-parse string)
-           (char= (char string 0) #\space))))
-
-(defun org-heading-string-p (string)
-  (let ((stars (position-if-not (lambda (c) (char= c #\*)) string)))
-    (and stars (plusp stars) (char= (char string stars) #\space))))
 
 (defun following-lines (point)
   "The strings of POINT's line and every line after it."
