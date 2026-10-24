@@ -25,7 +25,7 @@
                       (inside (write-line line text))))
       (get-output-stream-string text))))
 
-(dolist (file '("org-mode.lisp" "timestamp.lisp" "tasks-model.lisp" "planning.lisp" "structure.lisp" "agenda.lisp" "babel-model.lisp" "export.lisp" "babel.lisp"))
+(dolist (file '("org-mode.lisp" "timestamp.lisp" "tasks-model.lisp" "planning.lisp" "structure.lisp" "capture.lisp" "agenda.lisp" "babel-model.lisp" "export.lisp" "babel.lisp"))
   (with-input-from-string (in (pure-regions file))
     (loop :for form := (read in nil :eof) :until (eq form :eof)
           :do (let ((*error-output* (make-broadcast-stream))) (eval form)))))

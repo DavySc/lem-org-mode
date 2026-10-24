@@ -64,6 +64,18 @@
            :org-edit-src-exit
            :org-edit-src-abort
            :*org-babel-default-header-args*
+           :org-capture-string
+           :org-refile
+           :org-archive-subtree
+           :org-copy-subtree
+           :org-cut-subtree
+           :org-paste-subtree
+           :org-toggle-archive-tag
+           :org-sort-entries
+           :org-entry-get
+           :org-entry-delete
+           :org-timestamp-change
+           :org-set-effort
            :*org-babel-confirm-evaluate*
            :*org-agenda-custom-commands*
            :*org-agenda-grid-times*
@@ -192,7 +204,20 @@
            :org-toggle-archive-tag-command
            :org-toggle-heading
            :org-toggle-ordered-property
-           :outline-up-heading))
+           :outline-up-heading
+           :*org-capture-templates*
+           :*org-default-notes-file*
+           :*org-last-stored-link*
+           :*org-refile-targets*
+           :*org-reverse-note-order*
+           :*org-user-name*
+           :org-capture
+           :org-capture-finalize
+           :org-capture-kill
+           :org-capture-refile
+           :org-refile-command
+           :org-refile-copy
+           :org-refile-goto))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
