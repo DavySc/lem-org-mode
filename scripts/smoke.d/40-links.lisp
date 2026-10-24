@@ -8,7 +8,7 @@
 (smoke-check "link classification" '(:file "a.org" "*H") (multiple-value-list (lem-org-mode::link-classify "file:a.org::*H")))
 
 (smoke-check "heading search finds the line"
-             2
+             1
              (lem-org-mode::lines-find-search (list "x" "** TODO Heading :t:" "y") "*heading" '("TODO" "DONE")))
 
 (smoke-check "id property is made once"
