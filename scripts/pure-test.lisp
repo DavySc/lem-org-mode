@@ -512,5 +512,10 @@ b" ("x" "y"))
   (check "java" "hi" (run-block "java" "public class Main { public static void main(String[] a) { System.out.println(\"hi\"); } }" :mode :output)))
 (check-error "vars unsupported for go" (babel-assignment :go "x" "1"))
 
+;;; further tests, one file per area, in scripts/pure/
+(dolist (file (sort (directory (merge-pathnames "scripts/pure/*.lisp" *root*)) #'string< :key #'namestring))
+  (let ((*package* (find-package :org-pure-test)))
+    (load file)))
+
 (format t "~%~D failure~:P~%" *failures*)
 (sb-ext:exit :code (if (zerop *failures*) 0 1))

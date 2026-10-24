@@ -45,6 +45,11 @@
            :org-babel-remove-result
            :org-babel-expand-src-block
            :org-babel-info
+           :org-babel-demarcate-block
+           :org-babel-open-src-block-result
+           :org-babel-lob-ingest
+           :org-babel-lob-clear
+           :*org-babel-library-files*
            :org-babel-reset-sessions
            :org-edit-src-block
            :org-edit-src-exit
@@ -154,6 +159,9 @@
 (define-key *org-mode-keymap* "C-c C-v v" 'org-babel-expand-src-block)
 (define-key *org-mode-keymap* "C-c C-v k" 'org-babel-remove-result)
 (define-key *org-mode-keymap* "C-c C-v I" 'org-babel-info)
+(define-key *org-mode-keymap* "C-c C-v d" 'org-babel-demarcate-block)
+(define-key *org-mode-keymap* "C-c C-v o" 'org-babel-open-src-block-result)
+(define-key *org-mode-keymap* "C-c C-v i" 'org-babel-lob-ingest)
 (define-key *org-mode-keymap* "C-c '" 'org-edit-src-block)
 (define-key *org-mode-keymap* "C-c C-x C-i" 'org-clock-in-command)
 (define-key *org-mode-keymap* "C-c C-x C-o" 'org-clock-out-command)
@@ -1316,12 +1324,13 @@ Return the second value of FUNCTION."
   (cond ((member name '("postgres" "postgresql" "psql") :test #'string-equal) :psql)
         ((member name '("mssql" "sqlserver" "sqlcmd") :test #'string-equal) :sqlcmd)
         ((member name '("db2i" "ibmi" "odbc" "isql") :test #'string-equal) :isql)
-        (t (editor-error "Unknown SQL engine ~A (use postgres, mssql or db2i)" name))))
+        ((member name '("sqlite" "sqlite3") :test #'string-equal) :sqlite)
+        (t (editor-error "Unknown SQL engine ~A (use postgres, mssql, db2i or sqlite)" name))))
 
 (defun sql-input (kind sql)
   "The text to feed the client of engine KIND on stdin. sqlcmd runs nothing from a pipe without a final GO."
   (ecase kind
-    (:psql sql)
+    ((:psql :sqlite) sql)
     (:sqlcmd (format nil "~A~%GO~%" sql))
     (:isql (sql-statements-per-line sql))))
 
@@ -1334,6 +1343,9 @@ Return the second value of FUNCTION."
   "Return (values argv parser) to run SQL of engine KIND with the header ARGS (an alist)."
   (flet ((arg (name) (cdr (assoc name args :test #'string=))))
     (ecase kind
+      (:sqlite
+       (values (append (list "sqlite3" "-header" "-csv") (and (arg "db") (list (arg "db"))))
+               (lambda (output) (csv-parse output))))
       (:psql
        (values (append (list "psql" "-X" "-q" "--csv")
                        (and (arg "host") (list "-h" (arg "host")))

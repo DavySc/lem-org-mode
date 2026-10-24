@@ -241,4 +241,9 @@
                        (lem:editor-error () t))))
       (smoke-say "SKIP mssql checks (set LEM_ORG_SMOKE_MSSQL to a host)")))
 
+;;; further checks, one file per area, in scripts/smoke.d/
+(dolist (file (sort (directory (merge-pathnames "scripts/smoke.d/*.lisp" *smoke-root*)) #'string< :key #'namestring))
+  (handler-case (load file)
+    (serious-condition (e) (smoke-say "FAIL loading ~A: ~A" (pathname-name file) e))))
+
 (smoke-say "DONE")

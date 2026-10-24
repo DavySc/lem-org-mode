@@ -10,5 +10,6 @@
 (defsystem "lem-org-mode/tests"
   :depends-on ("lem-org-mode" "rove")
   :components ((:module "tests"
-                :components ((:file "main"))))
+                :components ((:file "main")
+                               (:file "babel2"))))
   :perform (test-op (op c) (symbol-call :rove '#:run c)))
