@@ -161,7 +161,7 @@ echo "$table"
 | `:results raw\|code\|drawer\|html\|latex\|org` and `:wrap [name]` | how to wrap it |
 | `:results replace\|append\|prepend\|silent` | what to do with an older result |
 | `:file out.png :file-desc "Plot"` | with `:results file`, the result is a link `[[file:out.png]]` (the code writes the file) |
-| `:session name` | later blocks with the same session and language see the variables of earlier ones. Emulated: the earlier blocks are run again, with their output discarded, so side effects repeat. `M-x org-babel-reset-sessions` forgets them. |
+| `:session name` | later blocks with the same session and language share one interpreter. **sh, python, js and ruby run in a live process** (one per buffer, language and session name; the block is sent once, so side effects do not repeat; `:results value` returns the last expression, no `return` needed; errors and tracebacks come back as the result and the session survives; a block that takes longer than `*org-babel-session-timeout*`, 60 s, kills the session). The other languages replay the earlier blocks with their output discarded. `M-x org-babel-reset-sessions` kills the processes and forgets the rest. `:dir` is used when the session starts. |
 | `:cache yes` | the result carries a hash (`#+RESULTS[hash]:`); an unchanged block is not run again |
 | `:eval never\|no\|query` | refuse to run, or ask first (`*org-babel-confirm-evaluate*` asks for every block) |
 | `:noweb yes\|tangle\|no-export\|strip-export\|eval\|query\|no` | expand `<<name>>` by the body of the block with that `#+NAME:`, or by all blocks with `:noweb-ref name` (joined by `:noweb-sep`, default newline); indentation is kept; `<<name(1)>>` runs the block |
@@ -196,7 +196,7 @@ The interpreters must be on `PATH`; change one in `lem-org-mode:*org-babel-langu
 
 **Library of Babel.** `C-c C-v i` adds the named blocks of the buffer to the library, and `*org-babel-library-files*` lists files whose named blocks are always available; `#+CALL:` and `:var` find them in every buffer. `C-c C-v d` splits the block at point, `C-c C-v o` jumps to its result.
 
-Not supported: real interpreter sessions, `:stdin`, running blocks as part of export (run `C-c C-v b` first; export uses the results in the buffer), detangling.
+Not supported: live sessions for languages other than sh, python, js and ruby (they replay), `:stdin`, running blocks as part of export (run `C-c C-v b` first; export uses the results in the buffer), detangling.
 
 ### SQL blocks
 
@@ -228,7 +228,7 @@ Org's `^:t` is `^:{}` here by default so that `snake_case` stays text.
 
 ## Not yet
 
-Real interpreter sessions for Babel, column view editing, habits, attachments, `org-protocol`, diary sexps, Org mode's countdown timers, speed keys, the ODT backend, and table formulas in Lisp. Table column widths count characters, so wide (CJK) text misaligns. Under `lem-vi-mode`, `Tab` is taken over in normal state (Org buffers get `org-cycle`, others keep the vi jump) and all other keys above work in normal and insert state, except `Shift-Up` / `Shift-Down` (and `Shift-Left/Right`) which insert state binds to movement; use `M-x org-shift-up` there. `C-c a a/t/m` became `C-c a` plus the key, as in Org.
+Live sessions for more languages, column view editing, habits, attachments, `org-protocol`, diary sexps, Org mode's countdown timers, speed keys, the ODT backend, and table formulas in Lisp. Table column widths count characters, so wide (CJK) text misaligns. Under `lem-vi-mode`, `Tab` is taken over in normal state (Org buffers get `org-cycle`, others keep the vi jump) and all other keys above work in normal and insert state, except `Shift-Up` / `Shift-Down` (and `Shift-Left/Right`) which insert state binds to movement; use `M-x org-shift-up` there. `C-c a a/t/m` became `C-c a` plus the key, as in Org.
 
 ## Test
 

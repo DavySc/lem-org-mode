@@ -74,3 +74,81 @@
     (move-to-line (current-point) 3)
     (lem-org-mode:org-babel-demarcate-block)
     (ok (string= (lines "#+begin_src sh" "one" "#+end_src" "" "#+begin_src sh" "two" "#+end_src") (text-of buffer)))))
+
+;;; Live sessions
+
+(defun session-block (language body &optional (args ":results output"))
+  (lines (format nil "#+begin_src ~A :session live ~A" language args) body "#+end_src"))
+
+(defun run-nth-block (buffer n)
+  "Run the Nth (from 1) source block of BUFFER, on its first body line."
+  (let ((found 0))
+    (loop :for line :in (lem-org-mode::buffer-lines buffer)
+          :for number :from 1
+          :do (when (and (>= (length line) 11) (string-equal "#+begin_src" line :end2 11) (= (incf found) n))
+                (return (run-at buffer (1+ number)))))))
+
+(defun session-results (buffer)
+  "The text of BUFFER after the last #+RESULTS: line."
+  (let ((text (text-of buffer)))
+    (string-trim '(#\newline) (subseq text (+ (search "#+RESULTS:" text :from-end t) 11)))))
+
+(deftest test-babel-live-session-no-replay
+  (with-program ("python3" "--version")
+    (lem-org-mode::babel-sessions-kill-all)
+    (let* ((count (format nil "/tmp/org-babel-count-~D" (random 100000)))
+           (buffer (make-org-buffer
+                    (lines (session-block "python" (format nil "open('~A', 'a').write('x')~%n = 41" count))
+                           (session-block "python" "print(n + 1)")))))
+      (unwind-protect
+           (progn
+             (run-nth-block buffer 1)
+             (run-nth-block buffer 2)
+             (run-nth-block buffer 2)
+             (ok (string= (session-results buffer) ": 42") "the second block sees the variable")
+             (ok (string= "x" (with-open-file (in count) (read-line in))) "the first block ran exactly once")
+             (ok (= 1 (hash-table-count lem-org-mode::*babel-processes*)) "one interpreter is alive")
+             (org-babel-reset-sessions)
+             (ok (zerop (hash-table-count lem-org-mode::*babel-processes*)) "reset kills the interpreter"))
+        (ignore-errors (delete-file count))))))
+
+(deftest test-babel-live-session-value-and-error
+  (with-program ("python3" "--version")
+    (lem-org-mode::babel-sessions-kill-all)
+    (let ((buffer (make-org-buffer
+                   (lines (session-block "python" "xs = [1, 2, 3]")
+                          (session-block "python" "sum(xs)" ":results value")
+                          (session-block "python" "1 / 0")
+                          (session-block "python" "print(len(xs))")))))
+      (run-nth-block buffer 1)
+      (run-nth-block buffer 2)
+      (ok (search (lines "#+RESULTS:" ": 6") (text-of buffer)) "value is the last expression")
+      (run-nth-block buffer 3)
+      (ok (search "ZeroDivisionError" (text-of buffer)) "a traceback is the result")
+      (run-nth-block buffer 4)
+      (ok (string= (session-results buffer) ": 3") "the session survives an error")
+      (lem-org-mode::babel-sessions-kill-all))))
+
+(deftest test-babel-live-session-js-ruby-sh
+  (dolist (case '(("node" "js" "var total = 5" "total + 1" "console.log(total * 2)")
+                  ("ruby" "ruby" "total = 5" "total + 1" "puts total * 2")))
+    (destructuring-bind (program language setup value-code output-code) case
+      (with-program (program "--version")
+        (lem-org-mode::babel-sessions-kill-all)
+        (let ((buffer (make-org-buffer (lines (session-block language setup)
+                                              (session-block language value-code ":results value")
+                                              (session-block language output-code)))))
+          (run-nth-block buffer 1)
+          (run-nth-block buffer 2)
+          (ok (search (lines "#+RESULTS:" ": 6") (text-of buffer)) (format nil "~A value" language))
+          (run-nth-block buffer 3)
+          (ok (string= (session-results buffer) ": 10") (format nil "~A output" language))
+          (lem-org-mode::babel-sessions-kill-all)))))
+  (with-program ("bash" "--version")
+    (lem-org-mode::babel-sessions-kill-all)
+    (let ((buffer (make-org-buffer (lines (session-block "sh" (format nil "cd /tmp~%x=7"))
+                                          (session-block "sh" (format nil "pwd~%echo $((x * 6))"))))))
+      (run-nth-block buffer 1)
+      (run-nth-block buffer 2)
+      (ok (string= (session-results buffer) (format nil ": /tmp~%: 42")) "shell keeps directory and variables")
+      (lem-org-mode::babel-sessions-kill-all))))

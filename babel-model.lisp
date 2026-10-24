@@ -512,15 +512,15 @@ or NIL when there is nothing to do."
 (defun babel-family-vars-p (family)
   (member family '(:python :js :ruby :perl :php :lua :r :powershell :lisp :shell)))
 
-(defun babel-assignment (family name value)
-  "Source text that binds NAME to VALUE."
+(defun babel-assignment (family name value &optional session)
+  "Source text that binds NAME to VALUE. In a SESSION js uses var, so that a block can run again."
   (unless (babel-family-vars-p family)
     (editor-error "Variables (:var) are not supported for ~(~A~)" family))
   (let ((literal (babel-encode family value)))
     (ecase family
       (:python (format nil "~A = ~A" name literal))
       (:ruby (format nil "~A = ~A" name literal))
-      (:js (format nil "const ~A = ~A;" name literal))
+      (:js (format nil "~A ~A = ~A;" (if session "var" "const") name literal))
       (:perl (format nil "my $~A = ~A;" name literal))
       (:php (format nil "$~A = ~A;" name literal))
       (:lua (format nil "local ~A = ~A" name literal))
@@ -578,6 +578,84 @@ ARGUMENTS being a list of strings such as \"x=1\" split at top-level commas."
       (setf end (group #\[))
       (values name arguments inside (or end (string-trim " " (subseq text (min pos (length text)))))))))
 
+;;; Live sessions: one interpreter per session, driven by a small server script that reads one request
+;;; per line ("mode<TAB>file<TAB>marker") from its standard input, runs the file in its own global state
+;;; and prints the marker when done. Mode "value" also prints the last expression as JSON after the value marker.
+
+(defparameter *babel-session-servers*
+  (list (list :python :flags '("-u" "-c") :value t :script "import sys, ast, json, traceback
+g = {'__name__': '__main__'}
+while True:
+    line = sys.stdin.readline()
+    if not line:
+        break
+    mode, path, marker = line.rstrip('\\n').split('\\t')
+    try:
+        tree = ast.parse(open(path, encoding='utf-8').read(), path)
+        last = None
+        if mode == 'value' and tree.body and isinstance(tree.body[-1], ast.Expr):
+            last = ast.Expression(tree.body.pop().value)
+        exec(compile(tree, path, 'exec'), g)
+        if last:
+            print('%V' + json.dumps(eval(compile(last, path, 'eval'), g), default=str))
+    except Exception as e:
+        traceback.print_exception(type(e), e, e.__traceback__.tb_next)
+    print()
+    print(marker)
+    sys.stdout.flush()
+")
+        (list :js :flags '("-e") :value t :script "const vm = require('vm'), fs = require('fs');
+globalThis.require = require;
+require('readline').createInterface({input: process.stdin}).on('line', line => {
+  const [mode, path, marker] = line.split('\\t');
+  try {
+    const v = vm.runInThisContext(fs.readFileSync(path, 'utf8'), {filename: path});
+    if (mode === 'value') { const j = JSON.stringify(v); console.log('%V' + (j === undefined ? 'null' : j)); }
+  } catch (e) { console.error(e && e.stack || String(e)); }
+  console.log('\\n' + marker);
+});
+")
+        (list :ruby :flags '("-e") :value t :script "$stdout.sync = true
+require 'json'
+b = Object.new.instance_eval { binding }
+while (line = $stdin.gets)
+  mode, path, marker = line.chomp.split(9.chr)
+  begin
+    v = eval(File.read(path), b, path)
+    puts '%V' + v.to_json if mode == 'value'
+  rescue StandardError, ScriptError => e
+    $stderr.puts e.class.to_s + ': ' + e.message
+  end
+  puts
+  puts marker
+end
+")
+        (list :shell :flags '("-c") :value nil :script "while IFS=$'\\t' read -r __org_m __org_p __org_k; do source \"$__org_p\" < /dev/null; printf '\\n%s\\n' \"$__org_k\"; done
+"))
+  "How to start a live :session for a language family: the interpreter's flags before the script, whether :results value
+returns the last expression (:value), and the server SCRIPT, where %V stands for the value marker. Only these families
+get a real process; other languages replay the earlier blocks of the session.")
+
+(defun babel-replace-text (text target value)
+  "TEXT with every TARGET replaced by VALUE."
+  (with-output-to-string (out)
+    (loop :with start := 0
+          :for at := (search target text :start2 start)
+          :do (write-string text out :start start :end (or at (length text)))
+          :while at :do (write-string value out) (setf start (+ at (length target))))))
+
+(defun babel-session-request (mode file marker)
+  "The line that asks a session server to run FILE and print MARKER when done."
+  (format nil "~A~C~A~C~A~%" mode #\tab file #\tab marker))
+
+(defun babel-session-output (text marker)
+  "What a block printed: TEXT up to MARKER, without the newline the server prints in front of it."
+  (let* ((at (search marker text))
+         (end (or at (length text))))
+    (when (and (plusp end) (char= (char text (1- end)) #\newline))
+      (decf end))
+    (subseq text 0 end)))
+
 ;;; Value mode: wrap the body so that its result is printed as JSON after a marker
 
 (defparameter *babel-value-marker* "ORG-BABEL-VALUE-4c1e:")
@@ -630,7 +708,7 @@ returns (values value found); if not found the text is a literal."
                          (cons (string-trim " " (subseq spec 0 equals))
                                (if found value (literal-var-value text))))))))
 
-(defun babel-program (family args body &key bindings value session-before)
+(defun babel-program (family args body &key bindings value session-before session)
   "The program text to run: variable BINDINGS, the SESSION-BEFORE bodies, then BODY wrapped in :prologue / :epilogue
 and, when VALUE is true, in the value wrapper. Return (values text value-wrapped-p)."
   (let* ((prologue (header-arg args "prologue"))
@@ -643,7 +721,7 @@ and, when VALUE is true, in the value wrapper. Return (values text value-wrapped
          (wrapped (and value (babel-value-program family full (mapcar #'car bindings)))))
     (values (format nil "~@[~A~%~]~{~A~%~}~{~A~%~}~@[~A~%~]~A"
                     (and (eq family :php) "<?php")
-                    (loop :for (name . v) :in bindings :collect (babel-assignment family name v))
+                    (loop :for (name . v) :in bindings :collect (babel-assignment family name v session))
                     session-before
                     (and session-before (babel-print-statement family *babel-session-marker*))
                     (or wrapped full))

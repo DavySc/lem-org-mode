@@ -22,6 +22,12 @@
 (defvar *babel-sessions* (make-hash-table :test 'equal)
   "For :session, the programs already run in each session, replayed before the next block.")
 
+(defvar *org-babel-session-timeout* 60
+  "Seconds a block of a live :session may take before the session is killed.")
+
+(defvar *babel-processes* (make-hash-table :test 'equal)
+  "The live interpreters of :session blocks, by (buffer-name family session).")
+
 (defvar *babel-header* nil
   "Column names stripped from the first table that a block takes as a variable; put back on a table result.")
 
@@ -324,12 +330,16 @@ through a file, :spec :family :program :value-wrapped, or :sql when it is an SQL
             (editor-error "Variables (:var) are not supported for ~A" language))
           (when (and session (not (babel-family-vars-p family)))
             (editor-error ":session is not supported for ~A" language))
-          (let ((before (and session (gethash (list (buffer-name (current-buffer)) language session) *babel-sessions*))))
+          (let* ((live (and session (assoc family *babel-session-servers*)))
+                 (before (and session (not live)
+                              (gethash (list (buffer-name (current-buffer)) language session) *babel-sessions*))))
             (multiple-value-bind (program wrapped)
                 (babel-program family args (babel-wrap-main family body)
-                               :bindings bindings :value value-mode :session-before before)
+                               :bindings bindings :session-before before :session (and live t)
+                               :value (and value-mode (not live)))
               (list :args args :language language :body body :bindings bindings :spec spec :family family
-                    :program program :value-wrapped wrapped :session session
+                    :program program :value-wrapped (if live (and value-mode (getf (cdr live) :value) t) wrapped)
+                    :session session :live (and live t)
                     :plain-program (babel-program family args body :bindings bindings))))))))
 
 (defun babel-evaluate (records record &key overrides existing-hash extra-bindings)
@@ -354,17 +364,21 @@ When :cache yes and the hash equals EXISTING-HASH nothing is run and the value i
                              args (getf plan :body))))
          (values (if (cdr rows) (list* (first rows) :rule (rest rows)) rows) hash *babel-header*)))
       (t
-       (let* ((stdout (babel-run (getf plan :spec) (getf plan :program) args))
+       (let* ((live (getf plan :live))
+              (stdout (if live
+                          (babel-session-eval plan args)
+                          (babel-run (getf plan :spec) (getf plan :program) args)))
               (session (getf plan :session)))
          (multiple-value-bind (output value-text)
-             (babel-split-output stdout :session (and session t) :value (getf plan :value-wrapped))
-           (when session
+             (babel-split-output stdout :session (and session (not live) t) :value (getf plan :value-wrapped))
+           (when (and session (not live))
              (push-session (list (buffer-name (current-buffer)) (getf plan :language) session)
                            (getf plan :plain-program)))
            (values (if (getf plan :value-wrapped)
-                       (if value-text
-                           (destructuring-bind (true false null) (json-keywords (getf plan :family))
-                             (json-parse value-text :true true :false false :null null))
+                       (if (or value-text (getf plan :live))
+                           (when value-text
+                            (destructuring-bind (true false null) (json-keywords (getf plan :family))
+                             (json-parse value-text :true true :false false :null null)))
                            (editor-error "The block returned no value (python and js blocks need `return')"))
                        (string-right-trim '(#\newline #\return) output))
                    hash *babel-header*)))))))
@@ -372,9 +386,84 @@ When :cache yes and the hash equals EXISTING-HASH nothing is run and the value i
 (defun push-session (key program)
   (setf (gethash key *babel-sessions*) (append (gethash key *babel-sessions*) (list program))))
 
+;;; Live sessions
+
+(defun babel-session-kill (process)
+  (ignore-errors (uiop:terminate-process process))
+  (ignore-errors (uiop:close-streams process)))
+
+(defun babel-session-start (spec family directory)
+  "Start the interpreter of FAMILY with its session server."
+  (let* ((server (cdr (assoc family *babel-session-servers*)))
+         (argv (append (list (first (getf (cdr spec) :argv)))
+                       (getf server :flags)
+                       (list (babel-replace-text (getf server :script) "%V" *babel-value-marker*)))))
+    (handler-case (uiop:launch-program argv :input :stream :output :stream :error-output :output
+                                            :external-format :utf-8 :directory directory)
+      (error (e) (editor-error "Cannot run ~A: ~A" (first argv) e)))))
+
+(defun babel-session-read (process marker key)
+  "Read the output of PROCESS up to the line MARKER. Kill the session on timeout or when the interpreter exits."
+  (let* ((output (uiop:process-info-output process))
+         (text (make-array 256 :element-type 'character :adjustable t :fill-pointer 0))
+         (end (format nil "~A~%" marker))
+         (deadline (+ (get-internal-real-time) (* *org-babel-session-timeout* internal-time-units-per-second))))
+    (loop
+      (let ((char (read-char-no-hang output nil :eof)))
+        (cond ((eq char :eof)
+               (babel-session-kill process)
+               (remhash key *babel-processes*)
+               (editor-error "The ~(~A~) session ended~@[: ~A~]" (second key)
+                             (let ((last (last-line-of text))) (and (plusp (length last)) last))))
+              (char
+               (vector-push-extend char text)
+               (let ((n (length text)) (m (length end)))
+                 (when (and (>= n m) (char= char #\newline) (string= end text :start2 (- n m)))
+                   (return (babel-session-output text marker)))))
+              ((> (get-internal-real-time) deadline)
+               (babel-session-kill process)
+               (remhash key *babel-processes*)
+               (editor-error "The ~(~A~) session did not answer in ~D seconds and was killed"
+                             (second key) *org-babel-session-timeout*))
+              (t (sleep 0.002)))))))
+
+(defun babel-session-eval (plan args)
+  "Send the program of PLAN to its live session, starting it if needed, and return what the block printed."
+  (let* ((family (getf plan :family))
+         (key (list (buffer-name (current-buffer)) family (getf plan :session)))
+         (process (let ((old (gethash key *babel-processes*)))
+                    (if (and old (uiop:process-alive-p old))
+                        old
+                        (setf (gethash key *babel-processes*)
+                              (babel-session-start (getf plan :spec) family (babel-directory (header-arg args "dir")))))))
+         (file (uiop:native-namestring
+                (make-pathname :type (getf (cdr (getf plan :spec)) :extension)
+                               :defaults (merge-pathnames (format nil "org-babel-session-~D-~D" (get-universal-time) (random 100000))
+                                                          (uiop:temporary-directory)))))
+         (marker (format nil "ORG-BABEL-END-~D-~D" (get-universal-time) (random 1000000))))
+    (unwind-protect
+         (progn
+           (with-open-file (out file :direction :output :if-exists :supersede :external-format :utf-8)
+             (write-string (getf plan :program) out))
+           (handler-case
+               (let ((input (uiop:process-info-input process)))
+                 (write-string (babel-session-request (if (getf plan :value-wrapped) "value" "output") file marker) input)
+                 (finish-output input))
+             (error () (remhash key *babel-processes*)
+               (editor-error "The ~(~A~) session has ended" family)))
+           (babel-session-read process marker key))
+      (ignore-errors (delete-file file)))))
+
+(defun babel-sessions-kill-all ()
+  (maphash (lambda (key process) (declare (ignore key)) (babel-session-kill process)) *babel-processes*)
+  (clrhash *babel-processes*))
+
+(pushnew 'babel-sessions-kill-all sb-ext:*exit-hooks*)
+
 (define-command org-babel-reset-sessions () ()
-  "Forget the programs that :session blocks replay."
+  "Forget the programs that :session blocks replay and kill the live session interpreters."
   (clrhash *babel-sessions*)
+  (babel-sessions-kill-all)
   (message "Babel sessions reset"))
 
 ;;; Writing results

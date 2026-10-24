@@ -232,7 +232,7 @@
 
 (deftest test-babel-session
   (with-program ("python3" "--version")
-    (clrhash lem-org-mode::*babel-sessions*)
+    (lem-org-mode::babel-sessions-kill-all)
     (let ((buffer (make-org-buffer
                    (lines "#+begin_src python :session s :results output" "x = 5" "#+end_src"
                           "#+begin_src python :session s :results output" "print(x + 1)" "#+end_src"))))

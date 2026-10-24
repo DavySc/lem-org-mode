@@ -51,6 +51,8 @@ All files are in package `lem-org-mode`, loaded in the order of `lem-org-mode.as
 - **Do not filter blank lines out of output** (`grep -v '^$'`) when you print a buffer's text: you will read missing blank lines that are there.
 - **Plan edits as data.** `result-edit` returns `(:insert N lines)`, `(:replace S COUNT lines)` or `(:delete A B)` in 1-based line numbers; `babel-apply-edit` carries them out with `replace-lines`, which edits only the differing span so that points keep their place.
 
+- **Live sessions** (`babel-session-eval`): a server script per family in `*babel-session-servers*` reads `mode<TAB>file<TAB>marker` lines; the block's program goes in a temp file. Rove tests start real interpreters, so kill them with `babel-sessions-kill-all`.
+
 ## Conventions
 
 Follow Lem's own style (see Lem's `contract.yml`): `defpackage` first and named after the file, `(loop :for … :do …)` with colons, kebab-case names, docstrings on commands and exported symbols, `editor-error` for user-facing errors, prefer `lem` exported symbols over `lem::` internals. Keep changes small and focused.
@@ -68,7 +70,7 @@ Done and tested headless (see the README for each): tables with formulas, plain 
 
 Next:
 
-1. Real Babel sessions (a persistent interpreter) and `:stdin`.
+1. `:stdin`; live sessions beyond sh / python / js / ruby (add a server script to `*babel-session-servers*`).
 2. Column view as an editable buffer, habits, attachments.
 3. Speed keys, countdown timers, `org-protocol`.
 4. ODT export; detangling.

@@ -299,7 +299,9 @@
            :org-publish
            :org-publish-all
            :org-publish-current-file
-           :org-publish-current-project))
+           :org-publish-current-project
+           :*org-babel-session-timeout*
+           :*org-keyword-syntax-tables*))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
