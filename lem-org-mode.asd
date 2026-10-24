@@ -33,5 +33,6 @@
                                (:file "tables-tests")
                                (:file "editing-tests")
                                (:file "export-tests")
-                               (:file "publish-tests"))))
+                               (:file "publish-tests")
+                               (:file "prompt-tests"))))
   :perform (test-op (op c) (symbol-call :rove '#:run c)))

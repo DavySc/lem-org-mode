@@ -248,7 +248,7 @@ interpreter, for example python on Windows.")
 
 (defun babel-file-data (file)
   "Return (values records lines) of the Org FILE, read relative to `*babel-directory*' and cached by write date."
-  (let ((path (merge-pathnames file (or *babel-directory* ""))))
+  (let ((path (merge-pathnames (expand-user-path file) (or *babel-directory* ""))))
     (unless (probe-file path) (editor-error "No such file: ~A" file))
     (let ((cached (gethash (namestring path) *babel-file-cache*)))
       (if (and cached (eql (first cached) (file-write-date path)))

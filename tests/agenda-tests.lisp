@@ -60,3 +60,13 @@
   (let ((spec (lem-org-mode::custom-command-spec '("b" "Block" ((agenda "" (:span :day)) (alltodo ""))))))
     (ok (= 2 (length (getf spec :blocks))))
     (ok (eq :day (getf (first (getf spec :blocks)) :span)))))
+
+(deftest test-agenda-files-with-tilde
+  (let* ((directory (format nil "org-agenda-test-~D-~D" (get-universal-time) (random 100000)))
+         (full (merge-pathnames (concatenate 'string directory "/") (user-homedir-pathname))))
+    (ensure-directories-exist full)
+    (with-open-file (out (merge-pathnames "a.org" full) :direction :output :if-exists :supersede)
+      (write-string (lines "* TODO From the home directory") out))
+    (let ((lem-org-mode:*org-agenda-files* (list (format nil "~~/~A/" directory))))
+      (ok (= 1 (length (lem-org-mode::agenda-entries)))))
+    (uiop:delete-directory-tree full :validate t :if-does-not-exist :ignore)))

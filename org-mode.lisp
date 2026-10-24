@@ -431,7 +431,6 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
 (define-key *org-mode-keymap* "M-Shift-Up" 'org-shift-meta-up)
 (define-key *org-mode-keymap* "M-Shift-Down" 'org-shift-meta-down)
 (define-key *org-mode-keymap* "C-c C-c" 'org-ctrl-c-ctrl-c)
-(define-key *org-mode-keymap* "C-c -" 'org-table-insert-hline)
 (define-key *org-mode-keymap* "M-Return" 'org-meta-return)
 (define-key *org-mode-keymap* "C-c C-s" 'org-schedule)
 (define-key *org-mode-keymap* "C-c C-d" 'org-deadline)
@@ -458,11 +457,35 @@ and logging flags as in Org: \"WAIT(w@/!)\". #+TODO: lines in a buffer override 
 (define-key *org-mode-keymap* "C-c C-x C-o" 'org-clock-out-command)
 (define-key *org-mode-keymap* "C-c C-x C-q" 'org-clock-cancel-command)
 
+(defun block-line-flags (lines)
+  "A vector with true for every line of LINES inside a #+begin_ ... #+end_ block (the begin and end lines included)."
+  (let ((flags (make-array (length lines) :initial-element nil)) (inside nil) (i 0))
+    (dolist (line lines flags)
+      (let ((s (string-left-trim '(#\space #\tab) line)))
+        (cond (inside
+               (setf (aref flags i) t)
+               (when (and (>= (length s) 6) (string-equal "#+end_" s :end2 6)) (setf inside nil)))
+              ((and (>= (length s) 8) (string-equal "#+begin_" s :end2 8))
+               (setf (aref flags i) t inside t))))
+      (incf i))))
+
+(defun buffer-block-flags (buffer)
+  "`block-line-flags' for BUFFER, kept until the buffer changes."
+  (let ((cache (buffer-value buffer 'block-flags-cache)) (tick (buffer-modified-tick buffer)))
+    (if (and cache (eql (car cache) tick))
+        (cdr cache)
+        (let ((flags (block-line-flags (split-text-lines (buffer-text buffer)))))
+          (setf (buffer-value buffer 'block-flags-cache) (cons tick flags))
+          flags))))
+
 (defun org-heading-level (point)
-  "Return the number of stars if POINT's line is an Org heading, otherwise NIL."
+  "Return the number of stars if POINT's line is an Org heading, otherwise NIL. Lines inside blocks are never headings."
   (let* ((string (line-string point))
          (stars (position-if-not (lambda (c) (char= c #\*)) string)))
-    (when (and stars (plusp stars) (char= (char string stars) #\space))
+    (when (and stars (plusp stars) (char= (char string stars) #\space)
+               (let ((flags (buffer-block-flags (point-buffer point)))
+                     (index (1- (line-number-at-point point))))
+                 (not (and (< -1 index (length flags)) (aref flags index)))))
       stars)))
 
 (defun org-subtree-bounds (point)

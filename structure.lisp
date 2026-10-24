@@ -739,7 +739,5 @@ ORDERED property) an open earlier sibling."
 (define-key *org-mode-keymap* "C-c C-x A" 'org-archive-to-archive-sibling)
 (define-key *org-mode-keymap* "C-c ^" 'org-sort)
 (define-key *org-mode-keymap* "C-c /" 'org-sparse-tree)
-(define-key *org-mode-keymap* "C-c *" 'org-toggle-heading)
 (define-key *org-mode-keymap* "C-c C-x o" 'org-toggle-ordered-property)
 (define-key *org-mode-keymap* "C-c C-x M-m" 'org-insert-subheading)
-(define-key *org-mode-keymap* "C-c C-x d" 'org-delete-property-command)

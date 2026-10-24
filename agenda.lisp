@@ -718,7 +718,7 @@ Months and years start on their first day."
 
 (defun agenda-source-files (&optional (files *org-agenda-files*))
   (loop :for item :in files
-        :for path := (uiop:parse-native-namestring item)
+        :for path := (uiop:parse-native-namestring (expand-user-path item))
         :append (if (uiop:directory-pathname-p path)
                     (mapcar #'uiop:native-namestring (uiop:directory-files path "*.org"))
                     (list (uiop:native-namestring path)))))
