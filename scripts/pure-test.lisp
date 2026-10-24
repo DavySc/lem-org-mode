@@ -353,8 +353,8 @@ b" ("x" "y"))
 (check "file with description" '("#+RESULTS:" "[[file:o.png][Plot]]")
        (format-babel-result "" '(("results" . "file") ("file" . "o.png") ("file-desc" . "\"Plot\""))))
 (check "named and cached header" '("#+RESULTS[ab12]: foo" ": 1") (format-babel-result 1 nil :name "foo" :hash "ab12"))
-(check "empty result" nil (format-babel-result "" nil))
-(check "empty table" nil (format-babel-result nil nil))
+(check "empty result" '("#+RESULTS:") (format-babel-result "" nil))
+(check "empty table" '("#+RESULTS:") (format-babel-result nil nil))
 
 ;;; babel: where results go
 (check "insert a new result" '(:insert 4 ("" "#+RESULTS:" ": 1")) (result-edit '("next") 3 nil '("#+RESULTS:" ": 1") "replace"))

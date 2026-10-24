@@ -152,3 +152,10 @@
       (run-nth-block buffer 2)
       (ok (string= (session-results buffer) (format nil ": /tmp~%: 42")) "shell keeps directory and variables")
       (lem-org-mode::babel-sessions-kill-all))))
+
+(deftest test-babel-empty-result-leaves-results-line
+  (with-program ("bash" "--version")
+    (let ((buffer (make-org-buffer (lines "#+begin_src sh :results output" "true" "#+end_src"))))
+      (run-at buffer 2)
+      (ok (string= (lines "#+begin_src sh :results output" "true" "#+end_src" "" "#+RESULTS:" "") (text-of buffer))
+          "an empty result leaves #+RESULTS: and a blank line, as in Emacs"))))

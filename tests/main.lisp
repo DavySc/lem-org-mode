@@ -237,7 +237,7 @@
                    (lines "#+begin_src python :session s :results output" "x = 5" "#+end_src"
                           "#+begin_src python :session s :results output" "print(x + 1)" "#+end_src"))))
       (run-at buffer 2)
-      (run-at buffer 5)
+      (run-at buffer 7)
       (ok (search (lines "#+RESULTS:" ": 6") (text-of buffer)) "the second block sees the first block's variable"))))
 
 (deftest test-babel-noweb

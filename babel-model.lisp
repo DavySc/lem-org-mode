@@ -345,7 +345,7 @@ or NIL when there is nothing to do."
       (offset
        (list :replace (+ end-index 2 offset) count lines))
       (t
-       (list :insert (1+ end-index) (cons "" lines))))))
+       (list :insert (1+ end-index) (cons "" (if (rest lines) lines (append lines (list "")))))))))
 
 ;;; Values: scalars (string or number), lists, tables (lists of rows, :rule for a horizontal line)
 
@@ -780,7 +780,7 @@ tabs, or by blanks when there are no tabs."
         (t (mapcar (lambda (x) (format nil "- ~A" (value-cell-string x))) value))))
 
 (defun format-babel-result (value args &key language name hash header)
-  "The lines to put in the buffer for a block's VALUE: the #+RESULTS: line and its content, or NIL when empty.
+  "The lines to put in the buffer for a block's VALUE: the #+RESULTS: line and its content (only the line when empty, as in Org).
 HEADER, the column names stripped from the input, is put back on a table."
   (let* ((tokens (split-words (or (header-arg args "results") "")))
          (has (lambda (token) (member token tokens :test #'string-equal)))
@@ -811,8 +811,7 @@ HEADER, the column names stripped from the input, is put back on a table."
                      ((and (consp value) (funcall has "list")) raw)
                      ((consp value) raw)
                      (t (funcall fixed)))))
-    (when body
-      (cons (format nil "#+RESULTS~@[[~A]~]:~@[ ~A~]" hash name) body))))
+    (cons (format nil "#+RESULTS~@[[~A]~]:~@[ ~A~]" hash name) body)))
 
 (defun babel-hash (string)
   "A 64-bit FNV-1a hash of STRING as 16 hex digits, for :cache."
