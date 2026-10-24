@@ -234,7 +234,20 @@
            :org-open-at-point-command
            :org-previous-link
            :org-store-link-command
-           :*org-switch-function*))
+           :*org-switch-function*
+           :*org-dblock-writers*
+           :org-clock-goto
+           :org-clock-report
+           :org-ctrl-c-star
+           :org-dblock-update-command
+           :org-table-convert-region
+           :org-table-eval-formula
+           :org-table-export-command
+           :org-table-import
+           :org-table-recalculate-buffer-command
+           :org-table-recalculate-command
+           :org-table-sum
+           :org-update-all-dblocks-command))
 (in-package :lem-org-mode)
 
 (defvar *org-todo-keywords* '("TODO" "DONE")
@@ -1654,6 +1667,11 @@ Return the second value of FUNCTION."
   "Do the context-appropriate action: run a source block or #+CALL:, realign a table, or toggle a checkbox."
   (let ((point (current-point)))
     (cond ((or (src-block-bounds point) (org-call-line-p point)) (org-babel-execute point))
+          ((table-point-above-tblfm point) (org-table-recalculate (table-point-above-tblfm point)))
+          ((and (org-table-at-point-p point) (table-formula-lines (table-end-line (table-first-line point))))
+           (org-table-recalculate point))
+          ((org-dblock-line-p point) (org-dblock-update point))
+          ((clock-line-p (line-string point)) (org-clock-update-line point))
           ((org-table-at-point-p point) (org-table-edit point :align))
           ((org-item-at-point-p point) (org-toggle-checkbox point))
           (t (editor-error "Nothing to do here")))))

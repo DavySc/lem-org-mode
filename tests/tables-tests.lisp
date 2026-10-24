@@ -1,0 +1,58 @@
+(in-package :lem-org-mode/tests)
+
+(deftest test-table-formulas
+  (let ((buffer (make-org-buffer (lines "| a | b | c |" "|---+---+---|" "| 2 | 3 |   |" "| 4 | 5 |   |"
+                                        "#+TBLFM: $3=$1*$2"))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode::org-table-recalculate (line-point buffer 3))
+    (ok (search (lines "| 2 | 3 |  6 |" "| 4 | 5 | 20 |" "#+TBLFM: $3=$1*$2") (text-of buffer)))
+    (move-to-line (current-point) 3)
+    (lem-org-mode::org-ctrl-c-ctrl-c)
+    (ok (search "| 2 | 3 |  6 |" (text-of buffer)) "C-c C-c in a table with a formula recomputes it")))
+
+(deftest test-table-formula-commands
+  (let ((buffer (make-org-buffer (lines "| 1 | 2 |" "| 3 | 4 |"))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode::org-table-column-formula-set (line-point buffer 1) "$2=$1+10")
+    (ok (search "#+TBLFM: $2=$1+10" (text-of buffer)))
+    (lem-org-mode::org-table-column-formula-set (line-point buffer 1) "$2=$1+20")
+    (lem-org-mode::org-table-recalculate (line-point buffer 1))
+    (ok (search "| 1 | 21 |" (text-of buffer)) "the formula was replaced, not added")
+    (let ((count (lem-org-mode::org-table-recalculate-buffer buffer)))
+      (ok (= 1 count)))))
+
+(deftest test-table-text-conversion
+  (let ((buffer (make-org-buffer (lines "name,qty" "pear,3" "fig,12" "" "after"))))
+    (setf (lem:current-buffer) buffer)
+    (move-to-line (current-point) 2)
+    (lem-org-mode::org-table-convert-lines 1 3)
+    (ok (string= (lines "| name | qty |" "| pear |   3 |" "| fig  |  12 |" "" "after") (text-of buffer))))
+  (let ((buffer (make-org-buffer (lines "| a | b,c |" "|---+-----|" "| 1 | 2 |")))
+        (file (format nil "/tmp/org-export-~D.csv" (get-universal-time))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode::org-table-export (line-point buffer 1) file #\,)
+    (ok (string= (format nil "a,\"b,c\"~%1,2~%") (uiop:read-file-string file)))
+    (delete-file file)))
+
+(deftest test-dynamic-blocks
+  (let ((buffer (make-org-buffer (lines "* Work" "** Task" ":LOGBOOK:" "CLOCK: [2026-10-20 Tue 09:00]--[2026-10-20 Tue 10:30] =>  1:30" ":END:"
+                                        "#+BEGIN: clocktable :scope file :maxlevel 2" "old" "#+END:"))))
+    (setf (lem:current-buffer) buffer)
+    (move-to-line (current-point) 6)
+    (lem-org-mode::org-ctrl-c-ctrl-c)
+    (let ((text (text-of buffer)))
+      (ok (search "| *Total time* | *1:30* |" text))
+      (ok (search "\\_  Task" text))
+      (ok (not (search "old" text)) "the old content was replaced")
+      (ok (search "#+END:" text)))
+    (ok (= 1 (lem-org-mode::org-update-all-dblocks buffer))))
+  (let ((buffer (make-org-buffer (lines "#+COLUMNS: %ITEM %TODO" "* TODO a" "* b" "#+BEGIN: columnview" "#+END:"))))
+    (setf (lem:current-buffer) buffer)
+    (lem-org-mode::org-update-all-dblocks buffer)
+    (ok (search "| ITEM | TODO |" (text-of buffer)))
+    (ok (search "| a    | TODO |" (text-of buffer))))
+  (let ((buffer (make-org-buffer (lines "* t" "CLOCK: [2026-10-22 Thu 08:00]--[2026-10-22 Thu 09:00] => 9:99"))))
+    (setf (lem:current-buffer) buffer)
+    (move-to-line (current-point) 2)
+    (lem-org-mode::org-ctrl-c-ctrl-c)
+    (ok (search "=>  1:00" (text-of buffer)) "C-c C-c on a CLOCK line fixes the duration")))
