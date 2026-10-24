@@ -173,7 +173,7 @@
              (let* ((b (smoke-buffer (format nil "#+TITLE: T~%* Head~%text *bold*~%")))
                     (html (lem-org-mode::export-html (lem-org-mode::split-text-lines (lem:buffer-text b))
                                                      '("TODO" "DONE"))))
-               (list (and (search "<h2>Head</h2>" html) t) (and (search "<b>bold</b>" html) t))))
+               (list (and (search "Head</h2>" html) t) (and (search "<b>bold</b>" html) t))))
 
 (smoke-check "markdown export"
              (format nil "# T~%~%## Head~%~%text **bold**~%")

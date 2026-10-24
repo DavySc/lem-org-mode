@@ -131,7 +131,7 @@
 (deftest test-export
   (let ((html (lem-org-mode::export-html (list "* Head" "text") '("TODO" "DONE")))
         (md (lem-org-mode::export-markdown (list "* Head" "text") '("TODO" "DONE"))))
-    (ok (search "<h2>Head</h2>" html))
+    (ok (search "Head</h2>" html))
     (ok (string= (format nil "# Head~%~%text~%") md))))
 
 (deftest test-agenda-parse

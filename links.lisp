@@ -3,10 +3,6 @@
 
 (in-package :lem-org-mode)
 
-(defvar *org-link-abbrev-alist* '()
-  "Link abbreviations: an alist of (NAME . FORMAT). A link [[NAME:tag]] opens FORMAT with %s replaced by tag
-(%h by the URL-encoded tag). #+LINK: NAME FORMAT lines of a buffer add to these.")
-
 (defvar *org-url-open-function* 'open-url-externally
   "The function that opens a URL or an external file, called with the string.")
 
@@ -32,6 +28,10 @@
   "ID -> file name, filled by `org-id-update-id-locations' and when IDs are found.")
 
 ;;; BEGIN pure links code
+
+(defvar *org-link-abbrev-alist* '()
+  "Link abbreviations: an alist of (NAME . FORMAT). A link [[NAME:tag]] opens FORMAT with %s replaced by tag
+(%h by the URL-encoded tag). #+LINK: NAME FORMAT lines of a buffer add to these.")
 
 ;;; Finding links in text
 

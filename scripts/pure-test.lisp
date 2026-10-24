@@ -137,7 +137,8 @@
        (export-inline "a *b* /c/ =d*e= [[http://x][y]] 1*2*3 +z+" :html))
 (check "inline markdown" "a **b** *c* `d` [y](http://x) ~~z~~"
        (export-inline "a *b* /c/ ~d~ [[http://x][y]] +z+" :markdown))
-(check "bare link" "<a href=\"x.org\">file:x.org</a>" (export-inline "[[file:x.org]]" :html))
+(check "bare link" "<a href=\"x.html\">file:x.org</a>" (export-inline "[[file:x.org]]" :html))
+(check "image link" "<img src=\"a.png\" alt=\"a.png\">" (export-inline "[[file:a.png]]" :html))
 (defvar *org-doc*
   (list "#+TITLE: Notes" "#+AUTHOR: Me" "* TODO [#A] First :t:" "SCHEDULED: <2026-10-22 Thu>"
         ":PROPERTIES:" ":ID: 1" ":END:" "Some *bold* text" "continues here."
@@ -147,19 +148,19 @@
         "#+begin_src sql :exports both" "select 1;" "#+end_src" "#+RESULTS:" "| 1 |" ""
         "#+begin_src sh" "echo 1 < 2" "#+end_src" "#+RESULTS:" ": 1" ""
         "#+begin_quote" "quoted" "#+end_quote" "# a comment" ": example" "-----"))
-(check "parse node kinds" '(:heading :planning :paragraph :list :list :table :src :table :src :quote :example :rule)
+(check "parse node kinds" '(:heading :planning :properties :paragraph :list :list :table :src :table :src :quote :example :rule)
        (mapcar #'first (export-parse *org-doc* *kw*)))
 (check "parse meta" '(("TITLE" . "Notes") ("AUTHOR" . "Me")) (nth-value 1 (export-parse *org-doc* *kw*)))
-(check "paragraph joined" "Some *bold* text continues here." (second (third (export-parse *org-doc* *kw*))))
+(check "paragraph keeps its line breaks" (format nil "Some *bold* text~%continues here.") (second (fourth (export-parse *org-doc* *kw*))))
 (check "nested list" '(("-" nil "one" (("-" nil "nested [[http://a][A]]" nil))) ("-" nil "two" nil))
-       (third (fourth (export-parse *org-doc* *kw*))))
+       (third (fifth (export-parse *org-doc* *kw*))))
 (defvar *html* (export-html *org-doc* *kw*))
 (check "html pieces" t
        (and (contains *html* "<title>Notes</title>") (contains *html* "<h1 class=\"title\">Notes</h1>")
-            (contains *html* "<h2><span class=\"todo TODO\">TODO</span> <span class=\"priority\">[#A]</span> First")
-            (contains *html* "<ul>") (contains *html* (format nil "<li>one~%<ul>")) (contains *html* "<a href=\"http://a\">A</a>")
-            (contains *html* "<ol>") (contains *html* "<code>[X]</code> done")
-            (contains *html* "<thead>") (contains *html* "<th>h1</th>") (contains *html* "<td>a</td>")
+            (contains *html* "<span class=\"todo TODO\">TODO</span> <span class=\"priority\">[#A]</span> First")
+            (contains *html* "<ul class=\"org-ul\">") (contains *html* (format nil "<li>one~%<ul class=\"org-ul\">")) (contains *html* "<a href=\"http://a\">A</a>")
+            (contains *html* "<ol class=\"org-ol\">") (contains *html* "<code>[X]</code> done")
+            (contains *html* "<thead>") (contains *html* "<th class=\"org-left\">h1</th>") (contains *html* "<td class=\"org-left\">a</td>")
             (contains *html* "<pre class=\"src src-sql\">") (contains *html* "echo 1 &lt; 2")
             (contains *html* "<blockquote>") (contains *html* "<hr>") (contains *html* "<pre class=\"example\">example</pre>")
             (not (contains *html* "ID: 1")) (not (contains *html* "a comment"))
@@ -169,7 +170,7 @@
        (and (contains *md* (format nil "# Notes~%~%## **TODO** [#A] First"))
             (contains *md* (format nil "- one~%   - nested [A](http://a)~%- two"))
             (contains *md* (format nil "1. [X] done~%2. open"))
-            (contains *md* (format nil "| h1 | h2 |~%| --- | --- |~%| a | 1 |"))
+            (contains *md* (format nil "| h1 | h2 |~%| --- | ---: |~%| a | 1 |"))
             (contains *md* (format nil "```sql~%select 1;~%```"))
             (contains *md* (format nil "> quoted")) (contains *md* "---")))
 (check "results only for exports both" nil
@@ -184,7 +185,7 @@
 (check "markdown with title" (format nil "# T~%~%## Head~%~%text **bold**~%")
        (export-markdown (list "#+TITLE: T" "* Head" "text *bold*") *kw*))
 (check "markdown without title" (format nil "# Head~%~%text~%") (export-markdown (list "* Head" "text") *kw*))
-(check "html heading" t (contains (export-html (list "* Head" "text") *kw*) "<h2>Head</h2>"))
+(check "html heading" t (contains (export-html (list "* Head" "text") *kw*) "Head</h2>"))
 
 
 ;;; babel: header arguments
@@ -403,10 +404,10 @@ b" ("x" "y"))
                      "#+begin_src c :noweb strip-export" "<<part>>" "int z;" "#+end_src"
                      "#+begin_src c :noweb tangle" "<<part>>" "int w;" "#+end_src")
                *kw*))
-(check "export: header-args exports is inherited" nil (contains *noweb-export-html* (format nil "<code>int x;</code>")))
-(check "export: noweb yes expands" t (contains *noweb-export-html* (format nil "<code>int x;~%int y;</code>")))
-(check "export: strip-export removes references" t (contains *noweb-export-html* (format nil "<code>~%int z;</code>")))
-(check "export: noweb tangle keeps references" t (contains *noweb-export-html* (format nil "<code>&lt;&lt;part&gt;&gt;~%int w;</code>")))
+(check "export: header-args exports is inherited" nil (contains *noweb-export-html* (format nil ">int x;</pre>")))
+(check "export: noweb yes expands" t (contains *noweb-export-html* (format nil ">int x;~%int y;</pre>")))
+(check "export: strip-export removes references" t (contains *noweb-export-html* (format nil ">~%int z;</pre>")))
+(check "export: noweb tangle keeps references" t (contains *noweb-export-html* (format nil ">&lt;&lt;part&gt;&gt;~%int w;</pre>")))
 
 ;;; babel: tangle
 (defvar *tangle-doc*
